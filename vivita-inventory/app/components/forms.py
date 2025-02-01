@@ -78,6 +78,15 @@ class ItemForm:
             col1, col2, col3 = st.columns(3)
             
             with col1:
+                form_data["quantity"] = st.number_input(
+                    "Initial Quantity" if not self.existing_item else "Current Quantity",
+                    min_value=0,
+                    value=int(self.existing_item.get("quantity", 0))
+                    if self.existing_item else 0,
+                    help="Current quantity in stock"
+                )
+            
+            with col2:
                 form_data["min_quantity"] = st.number_input(
                     ITEM_FORM_FIELDS["min_quantity"]["label"],
                     min_value=0,
@@ -86,29 +95,33 @@ class ItemForm:
                     help=ITEM_FORM_FIELDS["min_quantity"]["help"]
                 )
             
-            with col2:
-                form_data["max_quantity"] = st.number_input(
-                    ITEM_FORM_FIELDS["max_quantity"]["label"],
-                    min_value=0,
-                    value=int(self.existing_item.get("max_quantity", 0))
-                    if self.existing_item else 0,
-                    help=ITEM_FORM_FIELDS["max_quantity"]["help"]
-                )
-            
             with col3:
                 form_data["unit_cost"] = st.number_input(
                     ITEM_FORM_FIELDS["unit_cost"]["label"],
                     min_value=0.0,
                     value=float(self.existing_item.get("unit_cost", 0.0))
                     if self.existing_item else 0.0,
-                    help=ITEM_FORM_FIELDS["unit_cost"]["help"]
+                    help=ITEM_FORM_FIELDS["unit_cost"]["help"],
+                    format="%.2f"
                 )
+            
+            # Optional: Maximum Quantity
+            form_data["max_quantity"] = st.number_input(
+                ITEM_FORM_FIELDS["max_quantity"]["label"],
+                min_value=0,
+                value=int(self.existing_item.get("max_quantity", 0))
+                if self.existing_item else 0,
+                help=ITEM_FORM_FIELDS["max_quantity"]["help"]
+            )
             
             submit_button = st.form_submit_button(
                 "Update Item" if self.existing_item else "Create Item"
             )
             
             if submit_button:
+                # Debug logging
+                st.write("Form Data:", form_data)
+                
                 if not form_data["name"]:
                     st.error("Item name is required")
                     return
@@ -118,14 +131,19 @@ class ItemForm:
                         form_data["category"],
                         form_data["name"]
                     )
+                    st.write("Generated SKU:", form_data["sku"])
                 
-                if not validate_quantity(
-                    form_data.get("min_quantity", 0),
-                    max_quantity=form_data.get("max_quantity")
-                ):
-                    st.error("Invalid quantity values")
+                # Validate quantity relationships
+                if form_data["quantity"] < form_data["min_quantity"]:
+                    st.error("Current quantity cannot be less than minimum quantity")
                     return
                 
+                if form_data["max_quantity"] > 0 and form_data["quantity"] > form_data["max_quantity"]:
+                    st.error("Current quantity cannot be greater than maximum quantity")
+                    return
+                
+                # Log before submission
+                st.write("Submitting data to database:", form_data)
                 self.on_submit(form_data)
 
 class TransactionForm:
@@ -164,11 +182,13 @@ class TransactionForm:
                 )
             
             with col2:
-                form_data["unit_price"] = st.number_input(
+                form_data["unit_price"] = float(st.number_input(
                     TRANSACTION_FORM_FIELDS["unit_price"]["label"],
                     min_value=0.0,
+                    step=0.01,
+                    format="%.2f",
                     help=TRANSACTION_FORM_FIELDS["unit_price"]["help"]
-                )
+                ))
             
             form_data["reference_number"] = st.text_input(
                 TRANSACTION_FORM_FIELDS["reference_number"]["label"],
@@ -189,12 +209,14 @@ class TransactionForm:
             if submit_button:
                 # Validate quantity for outgoing transactions
                 if form_data["transaction_type"] in [
-                    TransactionType.SALE,
-                    TransactionType.TRANSFER_OUT,
-                    TransactionType.LOSS
+                    TransactionType.SALE.value,
+                    TransactionType.TRANSFER_OUT.value,
+                    TransactionType.LOSS.value
                 ]:
                     if form_data["quantity"] > self.current_quantity:
                         st.error("Insufficient quantity available")
                         return
                 
+                # Remove total_amount since it's not in the database schema
+                del form_data["total_amount"]
                 self.on_submit(form_data)

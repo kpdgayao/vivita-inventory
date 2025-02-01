@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
-from ..database.supabase_manager import SupabaseManager
+from app.database.supabase_manager import SupabaseManager
 
 class AnalyticsManager:
     """Manages analytics and data processing for inventory system."""

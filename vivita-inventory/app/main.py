@@ -5,11 +5,11 @@ from typing import Dict, Any
 import streamlit as st
 from dotenv import load_dotenv
 
-from database.supabase_manager import SupabaseManager
-from analytics.analytics_manager import AnalyticsManager
-from components.dashboard import Dashboard
-from components.sidebar import Sidebar
-from components.forms import ItemForm, TransactionForm
+from app.database.supabase_manager import SupabaseManager
+from app.analytics.analytics_manager import AnalyticsManager
+from app.components.dashboard import Dashboard
+from app.components.sidebar import Sidebar
+from app.components.forms import ItemForm, TransactionForm
 
 # Load environment variables
 load_dotenv()
@@ -71,6 +71,8 @@ def handle_transaction_submit(transaction_data: Dict[str, Any]):
     if result:
         st.success("Transaction created successfully!")
         st.session_state.show_new_transaction_form = False
+        # Force a rerun to refresh the data
+        st.experimental_rerun()
     else:
         st.error("Failed to create transaction")
 
@@ -140,13 +142,15 @@ def render_transactions_page():
                 st.write("**Quantity:**", transaction["quantity"])
             
             with col2:
+                unit_price = transaction.get('unit_price', 0)
+                total_amount = transaction.get('total_amount', 0)
                 st.write(
                     "**Unit Price:**",
-                    f"${transaction['unit_price']:.2f}"
+                    f"${unit_price:.2f}" if unit_price is not None else "N/A"
                 )
                 st.write(
                     "**Total Amount:**",
-                    f"${transaction['total_amount']:.2f}"
+                    f"${total_amount:.2f}" if total_amount is not None else "N/A"
                 )
             
             if transaction["notes"]:

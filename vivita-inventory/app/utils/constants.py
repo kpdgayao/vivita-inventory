@@ -13,6 +13,8 @@ class TransactionType(str, Enum):
     TRANSFER_OUT = "transfer_out"
     LOSS = "loss"
     WRITE_OFF = "write_off"
+    CREDIT_NOTE = "credit_note"
+    DEBIT_NOTE = "debit_note"
 
 class UnitType(str, Enum):
     """Valid unit types."""
