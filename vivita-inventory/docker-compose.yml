@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${STREAMLIT_SERVER_PORT:-8501}:8501"
+    volumes:
+      - .:/app
+      - ~/.cache/pip:/root/.cache/pip
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - STREAMLIT_SERVER_PORT=${STREAMLIT_SERVER_PORT:-8501}
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - DEBUG=${DEBUG:-False}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_ANALYTICS=${ENABLE_ANALYTICS:-True}
+      - CACHE_TTL=${CACHE_TTL:-3600}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
