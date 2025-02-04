@@ -55,25 +55,16 @@ class SupabaseManager:
     def create_item(self, item_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a new item."""
         try:
-            # Debug: Print initial data
-            print("\n=== Creating New Item ===")
-            print("Initial item data:", item_data)
-            
             # Ensure required fields are present and match database schema
             required_fields = ["name", "category", "unit_type", "quantity", "unit_cost", "min_quantity"]
             missing_fields = [field for field in required_fields if field not in item_data]
             if missing_fields:
-                error_msg = f"Missing required fields: {', '.join(missing_fields)}"
-                print(f"Error: {error_msg}")
-                raise ValueError(error_msg)
+                raise ValueError(f"Missing required fields: {', '.join(missing_fields)}")
             
             # Add default values if not present
             item_data.setdefault("is_active", True)
             item_data.setdefault("created_at", datetime.now().isoformat())
             item_data.setdefault("updated_at", datetime.now().isoformat())
-            
-            # Debug: Print data after defaults
-            print("Data after adding defaults:", item_data)
             
             # Ensure numeric fields are the correct type
             try:
@@ -82,42 +73,18 @@ class SupabaseManager:
                 item_data["unit_cost"] = float(item_data["unit_cost"])
                 if "max_quantity" in item_data:
                     item_data["max_quantity"] = int(item_data["max_quantity"])
-                print("Successfully converted numeric fields")
             except (ValueError, TypeError) as e:
-                error_msg = f"Invalid numeric value: {str(e)}"
-                print(f"Error: {error_msg}")
-                raise ValueError(error_msg)
-            
-            # Debug: Print final data before insert
-            print("Final data for insert:", item_data)
+                raise ValueError(f"Invalid numeric value: {str(e)}")
             
             # Create the item
-            print("Executing insert...")
             response = self.client.table("items").insert(item_data).execute()
             
             if not response.data:
-                error_msg = "No data returned from insert operation"
-                print(f"Error: {error_msg}")
                 return None
             
-            print("Item created successfully!")
-            print("Response data:", response.data[0])
             return response.data[0]
-            
-        except ValueError as e:
-            # Re-raise ValueError for validation errors
-            print("\n=== Error Creating Item ===")
-            print("Error type: ValueError")
-            print("Error message:", str(e))
-            print("Item data at error:", item_data)
-            raise
-            
         except Exception as e:
-            # Log other errors but don't re-raise
-            print("\n=== Error Creating Item ===")
-            print("Error type:", type(e).__name__)
-            print("Error message:", str(e))
-            print("Item data at error:", item_data)
+            print(f"Error creating item: {e}")
             return None
 
     def update_item(self, item_id: str, item_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -252,4 +219,93 @@ class SupabaseManager:
             return bool(response.data)
         except Exception as e:
             print(f"Error deleting transaction: {e}")
+            return False
+
+    def get_supplier(self, supplier_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a single supplier by ID."""
+        try:
+            response = self.client.table("suppliers").select("*").eq("id", supplier_id).single().execute()
+            return response.data if response.data else None
+        except Exception as e:
+            print(f"Error retrieving supplier: {e}")
+            return None
+
+    def get_suppliers(self, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Retrieve suppliers with optional filters."""
+        try:
+            query = self.client.table("suppliers").select("*")
+            
+            if filters:
+                for key, value in filters.items():
+                    query = query.eq(key, value)
+            
+            # Only return active suppliers by default
+            if not filters or "is_active" not in filters:
+                query = query.eq("is_active", True)
+            
+            response = query.execute()
+            return response.data
+        except Exception as e:
+            print(f"Error retrieving suppliers: {e}")
+            return []
+
+    def create_supplier(self, supplier_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Create a new supplier."""
+        try:
+            # Debug: Print initial data
+            print("\n=== Creating New Supplier ===")
+            print("Initial supplier data:", supplier_data)
+            
+            # Ensure required fields are present
+            if "name" not in supplier_data:
+                raise ValueError("Supplier name is required")
+            
+            # Add default values if not present
+            supplier_data.setdefault("is_active", True)
+            supplier_data.setdefault("created_at", datetime.now().isoformat())
+            supplier_data.setdefault("updated_at", datetime.now().isoformat())
+            
+            # Create the supplier
+            response = self.client.table("suppliers").insert(supplier_data).execute()
+            
+            if not response.data:
+                print("Error: No data returned from insert operation")
+                return None
+            
+            return response.data[0]
+        except Exception as e:
+            print(f"Error creating supplier: {e}")
+            return None
+
+    def update_supplier(self, supplier_id: str, supplier_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update an existing supplier."""
+        try:
+            # Remove any None values
+            update_data = {k: v for k, v in supplier_data.items() if v is not None}
+            
+            # Update the updated_at timestamp
+            update_data["updated_at"] = datetime.now().isoformat()
+            
+            response = self.client.table("suppliers").update(update_data).eq("id", supplier_id).execute()
+            
+            if not response.data:
+                print("Error: No data returned from update operation")
+                return None
+            
+            return response.data[0]
+        except Exception as e:
+            print(f"Error updating supplier: {e}")
+            return None
+
+    def delete_supplier(self, supplier_id: str) -> bool:
+        """Soft delete a supplier by setting is_active to False."""
+        try:
+            response = self.client.table("suppliers").update({
+                "is_active": False,
+                "updated_at": datetime.now().isoformat()
+            }).eq("id", supplier_id).execute()
+            
+            return bool(response.data)
+        except Exception as e:
+            print(f"Error deleting supplier: {e}")
             return False

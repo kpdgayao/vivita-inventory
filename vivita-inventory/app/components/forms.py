@@ -8,7 +8,8 @@ from ..utils.constants import (
     TRANSACTION_FORM_FIELDS,
     TransactionType,
     CategoryType,
-    UnitType
+    UnitType,
+    SUPPLIER_FORM_FIELDS
 )
 from ..utils.helpers import generate_sku, validate_quantity
 
@@ -20,203 +21,368 @@ class ItemForm:
         on_submit: Callable[[Dict[str, Any]], None],
         existing_item: Optional[Dict[str, Any]] = None
     ):
-        """Initialize the form."""
+        """Initialize the ItemForm.
+        
+        Args:
+            on_submit: Callback function to handle form submission
+            existing_item: Optional dictionary containing existing item data for editing
+        """
         self.on_submit = on_submit
         self.existing_item = existing_item
 
     def render(self):
         """Render the item form."""
         with st.form("item_form"):
-            form_data = {}
+            # Left and right columns for better organization
+            left_col, right_col = st.columns([3, 2])
             
-            # Basic Information
-            st.subheader("Basic Information")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                form_data["name"] = st.text_input(
-                    ITEM_FORM_FIELDS["name"]["label"],
-                    value=self.existing_item.get("name", "") if self.existing_item else "",
-                    help=ITEM_FORM_FIELDS["name"]["help"]
-                )
+            with left_col:
+                # Essential fields group
+                st.subheader("Essential Information")
                 
-                form_data["category"] = st.selectbox(
-                    ITEM_FORM_FIELDS["category"]["label"],
+                # Quick category selection with icons
+                category_icons = {
+                    "raw_materials": "🥩",
+                    "finished_goods": "🍱",
+                    "packaging": "📦",
+                    "supplies": "🧰",
+                    "equipment": "⚙️",
+                    "spare_parts": "🔧",
+                    "consumables": "🧪",
+                    "other": "📎"
+                }
+                
+                category = st.selectbox(
+                    "Category",
                     options=[e.value for e in CategoryType],
-                    index=[e.value for e in CategoryType].index(self.existing_item["category"])
-                    if self.existing_item and "category" in self.existing_item
-                    else 0,
+                    format_func=lambda x: f"{category_icons.get(x, '•')} {x.replace('_', ' ').title()}",
                     help=ITEM_FORM_FIELDS["category"]["help"]
                 )
-            
-            with col2:
-                form_data["sku"] = st.text_input(
-                    ITEM_FORM_FIELDS["sku"]["label"],
-                    value=self.existing_item.get("sku", "") if self.existing_item else "",
-                    help=ITEM_FORM_FIELDS["sku"]["help"],
-                    disabled=bool(self.existing_item)
-                )
                 
-                form_data["unit_type"] = st.selectbox(
-                    ITEM_FORM_FIELDS["unit_type"]["label"],
+                # Name with auto-complete from existing items
+                existing_items = st.session_state.db_manager.get_items()
+                existing_names = [item["name"] for item in existing_items]
+                name = st.text_input(
+                    "Item Name",
+                    value=self.existing_item.get("name", "") if self.existing_item else "",
+                    help="Start typing to see similar items"
+                ).strip()
+                
+                if name and not self.existing_item:
+                    similar_items = [n for n in existing_names if name.lower() in n.lower()]
+                    if similar_items:
+                        st.info(f"📝 Similar items: {', '.join(similar_items)}")
+                
+                # Quantity fields in a single row
+                q_col1, q_col2, q_col3 = st.columns(3)
+                
+                with q_col1:
+                    min_quantity = st.number_input(
+                        "Min Qty",
+                        value=int(self.existing_item["min_quantity"]) if self.existing_item and "min_quantity" in self.existing_item else 0,
+                        min_value=0,
+                        help=ITEM_FORM_FIELDS["min_quantity"]["help"]
+                    )
+                
+                with q_col2:
+                    max_quantity = st.number_input(
+                        "Max Qty",
+                        value=int(self.existing_item["max_quantity"]) if self.existing_item and "max_quantity" in self.existing_item else 0,
+                        min_value=0,
+                        help=ITEM_FORM_FIELDS["max_quantity"]["help"]
+                    )
+                
+                with q_col3:
+                    initial_qty = st.number_input(
+                        "Initial Qty",
+                        value=int(self.existing_item["quantity"]) if self.existing_item and "quantity" in self.existing_item else 0,
+                        min_value=0,
+                        help="Initial stock quantity",
+                        step=1
+                    )
+            
+            with right_col:
+                # Additional details group
+                st.subheader("Additional Details")
+                
+                # Unit type with icons
+                unit_icons = {
+                    "piece": "🔢",
+                    "kg": "⚖️",
+                    "gram": "⚖️",
+                    "liter": "🧪",
+                    "meter": "📏",
+                    "box": "📦",
+                    "pack": "🎁",
+                    "set": "🎯",
+                    "pair": "👥",
+                    "unit": "📍"
+                }
+                
+                unit_type = st.selectbox(
+                    "Unit Type",
                     options=[e.value for e in UnitType],
-                    index=[e.value for e in UnitType].index(self.existing_item["unit_type"])
-                    if self.existing_item and "unit_type" in self.existing_item
-                    else 0,
+                    format_func=lambda x: f"{unit_icons.get(x, '•')} {x.title()}",
                     help=ITEM_FORM_FIELDS["unit_type"]["help"]
                 )
-            
-            # Description
-            form_data["description"] = st.text_area(
-                ITEM_FORM_FIELDS["description"]["label"],
-                value=self.existing_item.get("description", "") if self.existing_item else "",
-                help=ITEM_FORM_FIELDS["description"]["help"]
-            )
-            
-            # Quantity Management
-            st.subheader("Quantity Management")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                form_data["quantity"] = st.number_input(
-                    "Initial Quantity" if not self.existing_item else "Current Quantity",
-                    min_value=0,
-                    value=int(self.existing_item.get("quantity", 0))
-                    if self.existing_item else 0,
-                    help="Current quantity in stock"
-                )
-            
-            with col2:
-                form_data["min_quantity"] = st.number_input(
-                    ITEM_FORM_FIELDS["min_quantity"]["label"],
-                    min_value=0,
-                    value=int(self.existing_item.get("min_quantity", 0))
-                    if self.existing_item else 0,
-                    help=ITEM_FORM_FIELDS["min_quantity"]["help"]
-                )
-            
-            with col3:
-                form_data["unit_cost"] = st.number_input(
-                    ITEM_FORM_FIELDS["unit_cost"]["label"],
+                
+                # Cost with peso symbol
+                st.markdown("**Unit Cost** (₱)")
+                unit_cost = st.number_input(
+                    "Unit Cost",
+                    value=float(self.existing_item["unit_cost"]) if self.existing_item and "unit_cost" in self.existing_item else 0.0,
                     min_value=0.0,
-                    value=float(self.existing_item.get("unit_cost", 0.0))
-                    if self.existing_item else 0.0,
                     help=ITEM_FORM_FIELDS["unit_cost"]["help"],
-                    format="%.2f"
+                    format="%.2f",
+                    label_visibility="collapsed"
                 )
-            
-            # Optional: Maximum Quantity
-            form_data["max_quantity"] = st.number_input(
-                ITEM_FORM_FIELDS["max_quantity"]["label"],
-                min_value=0,
-                value=int(self.existing_item.get("max_quantity", 0))
-                if self.existing_item else 0,
-                help=ITEM_FORM_FIELDS["max_quantity"]["help"]
-            )
-            
-            submit_button = st.form_submit_button(
-                "Update Item" if self.existing_item else "Create Item"
-            )
-            
-            if submit_button:
-                # Debug logging
-                st.write("Form Data:", form_data)
                 
-                if not form_data["name"]:
-                    st.error("Item name is required")
-                    return
+                # Optional supplier selection
+                suppliers = st.session_state.db_manager.get_suppliers()
+                supplier_options = [(s["id"], s["name"]) for s in suppliers if s["is_active"]]
+                supplier_id = None
                 
-                if not self.existing_item and not form_data["sku"]:
-                    form_data["sku"] = generate_sku(
-                        form_data["category"],
-                        form_data["name"]
+                if supplier_options:
+                    supplier_id = st.selectbox(
+                        "Supplier",
+                        options=[""] + [s[0] for s in supplier_options],
+                        format_func=lambda x: "Select Supplier" if not x else next((s[1] for s in supplier_options if s[0] == x), x),
+                        help="Select the primary supplier for this item"
                     )
-                    st.write("Generated SKU:", form_data["sku"])
                 
-                # Validate quantity relationships
-                if form_data["quantity"] < form_data["min_quantity"]:
-                    st.error("Current quantity cannot be less than minimum quantity")
-                    return
+                # Optional description
+                description = st.text_area(
+                    "Description",
+                    value=self.existing_item.get("description", "") if self.existing_item else "",
+                    help=ITEM_FORM_FIELDS["description"]["help"],
+                    placeholder="Enter any additional notes or details about the item"
+                )
                 
-                if form_data["max_quantity"] > 0 and form_data["quantity"] > form_data["max_quantity"]:
-                    st.error("Current quantity cannot be greater than maximum quantity")
-                    return
+                # Hidden SKU field for editing
+                sku = ""
+                if self.existing_item and "sku" in self.existing_item:
+                    sku = st.text_input(
+                        "SKU",
+                        value=self.existing_item["sku"],
+                        disabled=True,
+                        help="SKU cannot be changed once assigned"
+                    )
+            
+            # Submit button with keyboard shortcut
+            submit_label = "Update Item" if self.existing_item else "Add Item"
+            submitted = st.form_submit_button(
+                f"{submit_label} (⌘/Ctrl + Enter)",
+                use_container_width=True,
+                type="primary"
+            )
+            
+            if submitted:
+                # Validate required fields
+                required_fields = {
+                    "name": name,
+                    "category": category,
+                    "unit_type": unit_type,
+                    "unit_cost": unit_cost,
+                    "min_quantity": min_quantity
+                }
                 
-                # Log before submission
-                st.write("Submitting data to database:", form_data)
-                self.on_submit(form_data)
+                missing_fields = [
+                    field for field, value in required_fields.items() 
+                    if not value and ITEM_FORM_FIELDS[field]["required"]
+                ]
+                
+                if missing_fields:
+                    st.error(f"❌ Required fields missing: {', '.join(missing_fields)}")
+                    return None
+                
+                # Generate SKU if not provided
+                if not sku:
+                    existing_items = st.session_state.db_manager.get_items()
+                    existing_skus = [item["sku"] for item in existing_items if item["sku"]]
+                    from ..utils.helpers import generate_sku
+                    sku = generate_sku(category, name, existing_skus)
+                
+                data = {
+                    "name": name,
+                    "description": description,
+                    "category": category,
+                    "unit_type": unit_type,
+                    "sku": sku,
+                    "unit_cost": unit_cost,
+                    "min_quantity": min_quantity,
+                    "max_quantity": max_quantity if max_quantity > 0 else None,
+                    "supplier_id": supplier_id if supplier_id else None,
+                    "quantity": initial_qty
+                }
+                
+                self.on_submit(data)
+                return data
+            return None
 
 class TransactionForm:
     """Form for creating inventory transactions."""
     
-    def __init__(
-        self,
-        on_submit: Callable[[Dict[str, Any]], None],
-        item_id: str,
-        current_quantity: int
-    ):
-        """Initialize the form."""
-        self.on_submit = on_submit
-        self.item_id = item_id
-        self.current_quantity = current_quantity
-
-    def render(self):
+    def render(self, items):
         """Render the transaction form."""
-        with st.form("transaction_form"):
-            form_data = {"item_id": self.item_id}
-            
-            # Transaction Type
-            form_data["transaction_type"] = st.selectbox(
-                TRANSACTION_FORM_FIELDS["transaction_type"]["label"],
-                options=[e.value for e in TransactionType],
-                help=TRANSACTION_FORM_FIELDS["transaction_type"]["help"]
-            )
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                form_data["quantity"] = st.number_input(
-                    TRANSACTION_FORM_FIELDS["quantity"]["label"],
-                    min_value=1,
-                    help=TRANSACTION_FORM_FIELDS["quantity"]["help"]
+        st.markdown("### 🔄 New Transaction")
+        
+        with st.form("transaction_form", clear_on_submit=True):
+            form_container = st.container()
+            with form_container:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    item_id = st.selectbox(
+                        "Select Item",
+                        options=[item["id"] for item in items],
+                        format_func=lambda x: next((item["name"] for item in items if item["id"] == x), ""),
+                        help="Select the item for this transaction",
+                        key="transaction_item"
+                    )
+                    
+                    transaction_type = st.selectbox(
+                        "Transaction Type",
+                        ["purchase", "sale", "adjustment"],
+                        help="Select the type of transaction",
+                        key="transaction_type"
+                    )
+                
+                with col2:
+                    quantity = st.number_input(
+                        "Quantity",
+                        min_value=1,
+                        help="Enter the transaction quantity",
+                        key="transaction_quantity"
+                    )
+                    
+                    st.markdown("**Unit Price** (₱)")
+                    unit_price = st.number_input(
+                        "Unit Price",
+                        min_value=0.0,
+                        help="Enter the price per unit in Philippine Pesos",
+                        format="%.2f",
+                        key="transaction_price",
+                        label_visibility="collapsed"
+                    )
+                    
+                    reference_number = st.text_input(
+                        "Reference Number",
+                        help="Enter a reference number (e.g., PO number, invoice number)",
+                        key="transaction_reference"
+                    )
+                
+                notes = st.text_area(
+                    "Notes",
+                    help="Enter any additional notes",
+                    height=100,
+                    key="transaction_notes"
                 )
             
-            with col2:
-                form_data["unit_price"] = float(st.number_input(
-                    TRANSACTION_FORM_FIELDS["unit_price"]["label"],
-                    min_value=0.0,
-                    step=0.01,
-                    format="%.2f",
-                    help=TRANSACTION_FORM_FIELDS["unit_price"]["help"]
-                ))
+            col_submit1, col_submit2, col_submit3 = st.columns([1, 2, 1])
+            with col_submit2:
+                submitted = st.form_submit_button(
+                    "📝 Record Transaction",
+                    use_container_width=True,
+                    type="primary"
+                )
             
-            form_data["reference_number"] = st.text_input(
-                TRANSACTION_FORM_FIELDS["reference_number"]["label"],
-                help=TRANSACTION_FORM_FIELDS["reference_number"]["help"]
-            )
-            
-            form_data["notes"] = st.text_area(
-                TRANSACTION_FORM_FIELDS["notes"]["label"],
-                help=TRANSACTION_FORM_FIELDS["notes"]["help"]
-            )
-            
-            # Calculate and display total
-            form_data["total_amount"] = form_data["quantity"] * form_data["unit_price"]
-            st.info(f"Total Amount: ${form_data['total_amount']:.2f}")
-            
-            submit_button = st.form_submit_button("Create Transaction")
-            
-            if submit_button:
-                # Validate quantity for outgoing transactions
-                if form_data["transaction_type"] in [
-                    TransactionType.SALE.value,
-                    TransactionType.TRANSFER_OUT.value,
-                    TransactionType.LOSS.value
-                ]:
-                    if form_data["quantity"] > self.current_quantity:
-                        st.error("Insufficient quantity available")
-                        return
+            if submitted:
+                if not item_id:
+                    st.error("❌ Please select an item")
+                    return None
                 
-                # Remove total_amount since it's not in the database schema
-                del form_data["total_amount"]
-                self.on_submit(form_data)
+                return {
+                    "item_id": item_id,
+                    "transaction_type": transaction_type,
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "reference_number": reference_number,
+                    "notes": notes
+                }
+            return None
+
+class SupplierForm:
+    """Form for creating and editing suppliers."""
+    
+    def __init__(self, on_submit: Callable[[Dict[str, Any]], None], existing_supplier: Optional[Dict[str, Any]] = None):
+        """Initialize the SupplierForm.
+        
+        Args:
+            on_submit: Callback function to handle form submission
+            existing_supplier: Optional dictionary containing existing supplier data for editing
+        """
+        self.on_submit = on_submit
+        self.existing_supplier = existing_supplier
+    
+    def render(self):
+        """Render the supplier form."""
+        st.markdown("### 🏢 Supplier Details")
+        
+        with st.form("supplier_form", clear_on_submit=True):
+            form_container = st.container()
+            with form_container:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    name = st.text_input(
+                        SUPPLIER_FORM_FIELDS["name"]["label"],
+                        value=self.existing_supplier.get("name", "") if self.existing_supplier else "",
+                        help=SUPPLIER_FORM_FIELDS["name"]["help"]
+                    )
+                    
+                    contact_email = st.text_input(
+                        SUPPLIER_FORM_FIELDS["contact_email"]["label"],
+                        value=self.existing_supplier.get("contact_email", "") if self.existing_supplier else "",
+                        help=SUPPLIER_FORM_FIELDS["contact_email"]["help"]
+                    )
+                    
+                    phone = st.text_input(
+                        SUPPLIER_FORM_FIELDS["phone"]["label"],
+                        value=self.existing_supplier.get("phone", "") if self.existing_supplier else "",
+                        help=SUPPLIER_FORM_FIELDS["phone"]["help"]
+                    )
+                
+                with col2:
+                    address = st.text_area(
+                        SUPPLIER_FORM_FIELDS["address"]["label"],
+                        value=self.existing_supplier.get("address", "") if self.existing_supplier else "",
+                        help=SUPPLIER_FORM_FIELDS["address"]["help"],
+                        height=100
+                    )
+                    
+                    remarks = st.text_area(
+                        SUPPLIER_FORM_FIELDS["remarks"]["label"],
+                        value=self.existing_supplier.get("remarks", "") if self.existing_supplier else "",
+                        help=SUPPLIER_FORM_FIELDS["remarks"]["help"],
+                        height=100
+                    )
+            
+            col_submit1, col_submit2, col_submit3 = st.columns([1, 2, 1])
+            with col_submit2:
+                submitted = st.form_submit_button(
+                    "💾 Save Supplier",
+                    use_container_width=True,
+                    type="primary"
+                )
+            
+            if submitted:
+                # Validate required fields
+                if not name:
+                    st.error("❌ Supplier name is required")
+                    return None
+                
+                data = {
+                    "name": name,
+                    "contact_email": contact_email,
+                    "phone": phone,
+                    "address": address,
+                    "remarks": remarks
+                }
+                
+                # Add id if editing existing supplier
+                if self.existing_supplier and "id" in self.existing_supplier:
+                    data["id"] = self.existing_supplier["id"]
+                
+                self.on_submit(data)
+                return data
+            return None

@@ -15,109 +15,131 @@ class Dashboard:
         self.analytics = analytics_manager
 
     def render_summary_metrics(self):
-        """Render summary metrics in cards."""
+        """Render key summary metrics."""
         summary = self.analytics.get_inventory_summary()
         
-        col1, col2, col3, col4 = st.columns(4)
+        # Create two main columns for the overview
+        left_col, right_col = st.columns([2, 1])
         
-        with col1:
-            st.metric(
-                "Total Items",
-                f"{summary['total_items']:,}",
-                help="Total number of unique items in inventory"
-            )
+        with left_col:
+            st.markdown("### 📊 Key Metrics")
+            
+            # Only show the most important metrics
+            metric_cols = st.columns(3)
+            with metric_cols[0]:
+                st.metric(
+                    "Total Items",
+                    f"{summary['total_items']:,}",
+                    help="Total unique items"
+                )
+            
+            with metric_cols[1]:
+                st.metric(
+                    "Total Value",
+                    format_currency(summary['total_value']),
+                    help="Current inventory value"
+                )
+            
+            with metric_cols[2]:
+                st.metric(
+                    "Low Stock Items",
+                    f"{summary['low_stock_count']:,}",
+                    help="Items needing attention",
+                    delta=summary['low_stock_count'] if summary['low_stock_count'] > 0 else None,
+                    delta_color="inverse"
+                )
         
-        with col2:
-            st.metric(
-                "Total Value",
-                format_currency(summary['total_value']),
-                help="Total value of current inventory"
-            )
-        
-        with col3:
-            st.metric(
-                "Avg Unit Cost",
-                format_currency(summary['avg_unit_cost']),
-                help="Average cost per unit across all items"
-            )
-        
-        with col4:
-            st.metric(
-                "Low Stock Items",
-                f"{summary['low_stock_count']:,}",
-                help="Number of items below minimum quantity"
-            )
+        with right_col:
+            # Quick Actions
+            st.markdown("### ⚡ Quick Actions")
+            
+            # Add new item button
+            if st.button("📦 Add New Item", use_container_width=True):
+                st.session_state.page = "inventory"
+                st.session_state.show_new_item_form = True
+                st.rerun()
+            
+            # Add new supplier button
+            if st.button("🏢 Add New Supplier", use_container_width=True):
+                st.session_state.page = "suppliers"
+                st.session_state.show_new_supplier_form = True
+                st.rerun()
 
     def render_stock_alerts(self):
-        """Render stock alerts section."""
+        """Render critical stock alerts."""
         alerts = self.analytics.get_stock_alerts()
         
-        st.subheader("Stock Alerts")
-        
         if not alerts:
-            st.success("No items require attention")
             return
         
-        for alert in alerts:
-            with st.expander(f"🚨 {alert['name']} - Current: {alert['current_quantity']}"):
-                col1, col2 = st.columns(2)
+        # Only show if there are alerts
+        st.markdown("### 🚨 Critical Items")
+        
+        # Show only top 5 most critical items
+        critical_items = sorted(
+            alerts,
+            key=lambda x: (x['current_quantity'] / x['min_quantity'])
+        )[:5]
+        
+        for alert in critical_items:
+            shortage_percent = (alert['min_quantity'] - alert['current_quantity']) / alert['min_quantity'] * 100
+            with st.expander(
+                f"⚠️ {alert['name']} ({alert['current_quantity']} of {alert['min_quantity']} units)",
+                expanded=True
+            ):
+                cols = st.columns([3, 1])
+                with cols[0]:
+                    # Show a progress bar for visual representation
+                    st.progress(
+                        alert['current_quantity'] / alert['min_quantity'],
+                        text=f"Stock Level: {shortage_percent:.1f}% below minimum"
+                    )
                 
-                with col1:
-                    st.write("**Minimum Quantity:**", alert['min_quantity'])
-                    st.write("**Shortage:**", alert['shortage'])
-                
-                with col2:
-                    st.write("**Last Ordered:**", alert['last_ordered'])
-                    if st.button("Order More", key=f"order_{alert['id']}"):
+                with cols[1]:
+                    if st.button("📦 Order", key=f"order_{alert['id']}", use_container_width=True):
                         st.session_state["show_new_transaction_form"] = True
                         st.session_state["selected_item_id"] = alert['id']
+                        st.session_state["default_transaction_type"] = "purchase"
 
     def render_transaction_chart(self):
-        """Render transaction trend chart."""
-        st.subheader("Transaction Trends")
+        """Render simplified transaction trends."""
+        st.markdown("### 📈 Recent Activity")
         
-        col1, col2 = st.columns([3, 1])
+        # Create tabs for different views
+        tab1, tab2 = st.tabs(["📊 Overview", "📋 Recent Transactions"])
         
-        with col1:
-            chart = self.analytics.create_transaction_trend_chart()
+        with tab1:
+            # Show only the chart with last 7 days of data
+            chart = self.analytics.create_transaction_trend_chart(days=7)
             st.plotly_chart(chart, use_container_width=True)
         
-        with col2:
-            trends = self.analytics.get_transaction_trends()
-            
-            # Transaction type distribution
-            st.write("**Transaction Types**")
-            for t_type in trends["transaction_types"]:
-                st.write(
-                    f"{t_type['type']}: {t_type['count']:,}"
-                )
+        with tab2:
+            # Show only the 5 most recent transactions
+            transactions = self.analytics.get_recent_transactions(limit=5)
+            if transactions:
+                for t in transactions:
+                    with st.container():
+                        cols = st.columns([1, 2, 1])
+                        with cols[0]:
+                            icon = "📥" if t['transaction_type'] == "purchase" else "📤"
+                            st.markdown(f"{icon} **{t['transaction_type'].title()}**")
+                        with cols[1]:
+                            st.markdown(f"**{t['item_name']}**: {t['quantity']} units @ {format_currency(t['unit_price'])}")
+                        with cols[2]:
+                            st.markdown(f"{t['created_at']}")  # Date is already formatted
+            else:
+                st.info("No recent transactions")
 
     def render_category_analysis(self):
-        """Render category analysis section."""
-        st.subheader("Category Analysis")
+        """Render simplified category analysis."""
+        # Only show this if there's more than one category
+        categories = self.analytics.get_category_distribution()
+        if len(categories) <= 1:
+            return
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Category distribution chart
-            chart = self.analytics.create_inventory_value_chart()
-            st.plotly_chart(chart, use_container_width=True)
-        
-        with col2:
-            # Category metrics
-            categories = self.analytics.get_category_distribution()
-            
-            for category in categories:
-                with st.expander(f"📊 {category['category']}"):
-                    st.write("**Items:**", f"{category['item_count']:,}")
-                    st.write(
-                        "**Total Quantity:**",
-                        f"{category['total_quantity']:,}"
-                    )
-                    st.write(
-                        "**Total Value:**",
-                        format_currency(category['total_value'])
-                    )
+        st.markdown("### 📊 Category Overview")
+        chart = self.analytics.create_inventory_value_chart()
+        st.plotly_chart(chart, use_container_width=True)
 
     def render_inventory_table(self, inventory_data):
         """Render the inventory table with data."""
@@ -193,19 +215,16 @@ class Dashboard:
 
     def render(self):
         """Render the complete dashboard."""
-        st.title("Dashboard")
+        st.markdown("# 🏠 Dashboard")
         
-        # Summary metrics
+        # 1. Key Metrics and Quick Actions
         self.render_summary_metrics()
         
-        # Stock alerts
+        # 2. Critical Items (if any)
         self.render_stock_alerts()
         
-        # Charts
-        col1, col2 = st.columns(2)
+        # 3. Recent Activity
+        self.render_transaction_chart()
         
-        with col1:
-            self.render_transaction_chart()
-        
-        with col2:
-            self.render_category_analysis()
+        # 4. Category Overview (if multiple categories exist)
+        self.render_category_analysis()

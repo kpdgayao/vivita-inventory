@@ -56,9 +56,9 @@ ITEM_FORM_FIELDS: Dict[str, Dict] = {
     },
     "sku": {
         "label": "SKU",
-        "required": True,
+        "required": False,  
         "type": "text",
-        "help": "Enter a unique SKU for the item"
+        "help": "Enter a unique SKU for the item (will be auto-generated if left empty)"
     },
     "category": {
         "label": "Category",
@@ -87,10 +87,49 @@ ITEM_FORM_FIELDS: Dict[str, Dict] = {
         "help": "Enter the maximum stock level (optional)"
     },
     "unit_cost": {
-        "label": "Unit Cost",
+        "label": "Unit Cost (₱)",
         "required": True,
         "type": "number",
-        "help": "Enter the cost per unit"
+        "help": "Enter the cost per unit in Philippine Pesos (₱)"
+    },
+    "supplier_id": {
+        "label": "Supplier",
+        "required": False,
+        "type": "select",
+        "help": "Select the supplier for this item"
+    }
+}
+
+SUPPLIER_FORM_FIELDS: Dict[str, Dict] = {
+    "name": {
+        "label": "Supplier Name",
+        "required": True,
+        "type": "text",
+        "help": "Enter the name of the supplier"
+    },
+    "contact_email": {
+        "label": "Email",
+        "required": False,
+        "type": "text",
+        "help": "Enter the supplier's contact email"
+    },
+    "phone": {
+        "label": "Phone",
+        "required": False,
+        "type": "text",
+        "help": "Enter the supplier's contact phone number"
+    },
+    "address": {
+        "label": "Address",
+        "required": False,
+        "type": "text_area",
+        "help": "Enter the supplier's address"
+    },
+    "remarks": {
+        "label": "Remarks",
+        "required": False,
+        "type": "text_area",
+        "help": "Enter any additional notes about the supplier"
     }
 }
 

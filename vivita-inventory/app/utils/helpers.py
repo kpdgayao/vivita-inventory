@@ -64,14 +64,20 @@ def validate_quantity(
 
 def format_currency(
     amount: Union[int, float, Decimal],
-    currency: str = "$",
+    currency: str = "₱",
     decimals: int = 2
 ) -> str:
-    """Format a number as currency."""
-    try:
-        return f"{currency}{float(amount):,.{decimals}f}"
-    except (ValueError, TypeError):
-        return f"{currency}0.00"
+    """Format a number as currency.
+    
+    Args:
+        amount: The amount to format
+        currency: Currency symbol to use (default: ₱)
+        decimals: Number of decimal places (default: 2)
+    
+    Returns:
+        Formatted currency string
+    """
+    return f"{currency}{float(amount):,.{decimals}f}"
 
 def calculate_reorder_quantity(
     current_quantity: int,

@@ -13,6 +13,27 @@ The Vivita Inventory Management System is a modern web application built using S
 
 ## Database Schema
 
+### Core Tables
+1. Suppliers
+2. Inventory Items
+3. Transactions
+
+Tables must be created in this order due to foreign key dependencies
+
+### Suppliers Table
+Stores supplier information for inventory items with:
+- UUID primary key
+- Supplier name (required)
+- Contact information (email, phone, address)
+- Additional remarks
+- Audit fields (created_at, updated_at, created_by)
+- Active status tracking
+
+Key Features:
+- One-to-Many relationship with Items (items.supplier_id foreign key)
+- Automatic timestamp updates via triggers
+- Soft deletion support via is_active flag
+
 ### Items Table
 - Primary inventory items table
 - Tracks quantity, costs, and thresholds

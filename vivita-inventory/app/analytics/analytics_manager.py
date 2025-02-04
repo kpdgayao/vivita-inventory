@@ -111,14 +111,42 @@ class AnalyticsManager:
         df = pd.DataFrame(trends["daily_transactions"])
         
         if df.empty:
-            return go.Figure()
+            fig = go.Figure()
+            fig.add_annotation(
+                text="No transactions in this period",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False
+            )
+            return fig
 
+        # Convert date strings to datetime for better x-axis formatting
+        df["date"] = pd.to_datetime(df["date"])
+        
         fig = px.line(
             df,
             x="date",
             y="count",
             title=f"Transaction Trends (Last {days} Days)",
             labels={"count": "Number of Transactions", "date": "Date"}
+        )
+        
+        # Improve the layout
+        fig.update_layout(
+            xaxis=dict(
+                tickformat="%Y-%m-%d",
+                tickangle=45,
+                tickmode="auto",
+                nticks=10
+            ),
+            yaxis=dict(
+                tickmode="auto",
+                nticks=5
+            ),
+            showlegend=False,
+            margin=dict(t=50, b=50)  # Add some margin for better spacing
         )
         
         return fig
@@ -143,3 +171,45 @@ class AnalyticsManager:
             })
         
         return alerts
+
+    def get_recent_transactions(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get the most recent transactions.
+        
+        Args:
+            limit: Maximum number of transactions to return
+            
+        Returns:
+            List of recent transactions ordered by date (newest first)
+        """
+        transactions = self.db.get_transactions()
+        
+        # Convert to DataFrame for easier manipulation
+        df = pd.DataFrame(transactions)
+        if df.empty:
+            return []
+        
+        # Sort by created_at in descending order and take the top N
+        df['created_at'] = pd.to_datetime(df['created_at'])
+        df = df.sort_values('created_at', ascending=False).head(limit)
+        
+        # Get item details for each transaction
+        items = {item['id']: item for item in self.db.get_items()}
+        
+        # Enrich transactions with item details and format dates
+        result = []
+        for _, row in df.iterrows():
+            item = items.get(row['item_id'], {})
+            # Convert row to dict and handle the Timestamp
+            transaction = {}
+            for col in df.columns:
+                val = row[col]
+                # Convert Timestamp to string
+                if isinstance(val, pd.Timestamp):
+                    transaction[col] = val.strftime('%Y-%m-%d')
+                else:
+                    transaction[col] = val
+            
+            transaction['item_name'] = item.get('name', 'Unknown Item')
+            result.append(transaction)
+        
+        return result
