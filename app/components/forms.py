@@ -17,6 +17,25 @@ from ..utils.helpers import (
     format_currency
 )
 
+# Form field definitions for suppliers
+SUPPLIER_FORM_FIELDS = {
+    "name": {
+        "help": "The name of the supplier company or business"
+    },
+    "contact_email": {
+        "help": "Primary contact email for the supplier"
+    },
+    "phone": {
+        "help": "Contact phone number for the supplier"
+    },
+    "address": {
+        "help": "Physical or mailing address of the supplier"
+    },
+    "remarks": {
+        "help": "Any additional notes or information about the supplier"
+    }
+}
+
 class ItemForm:
     """Form for creating and editing inventory items."""
     
@@ -230,8 +249,14 @@ class ItemForm:
                 if self.existing_item and "id" in self.existing_item:
                     data["id"] = self.existing_item["id"]
                 
-                self.on_submit(data)
-                return data
+                # Call the submit callback and handle the result
+                if self.on_submit(data):
+                    if "id" in data:
+                        st.session_state.show_success = "✅ Item updated successfully!"
+                    else:
+                        st.session_state.show_success = "✅ Item created successfully!"
+                    return data
+                return None
             return None
 
 class TransactionForm:
@@ -245,27 +270,32 @@ class TransactionForm:
         """
         self.on_submit = on_submit
     
-    def render(self):
-        """Render the transaction form."""
-        # Get items for selection
-        items = st.session_state.db_manager.get_items()
-        if not items:
-            st.warning("No items available. Please add items first.")
-            return False
+    def _render_item_search(self, items):
+        """Render the item search interface.
         
-        st.markdown("### 🔄 New Transaction")
-        
-        with st.form("transaction_form", clear_on_submit=True):
-            # Item search and selection
-            search_col, info_col = st.columns([2, 1])
+        Args:
+            items: List of items to search through
             
-            with search_col:
-                # Search box for items
+        Returns:
+            selected_item: The selected item or None
+        """
+        # Initialize session state for selected item
+        if "selected_transaction_item" not in st.session_state:
+            st.session_state.selected_transaction_item = None
+        
+        # Item search and selection
+        search_col, info_col = st.columns([2, 1])
+        
+        with search_col:
+            # Create a container for search to prevent form submission
+            with st.container():
+                # Search box for items (outside the form)
                 search_query = st.text_input(
                     "Search Items",
                     value=st.session_state.get("item_search", ""),
                     help="Search by item name, SKU, or category",
-                    placeholder="Start typing to search..."
+                    placeholder="Start typing to search...",
+                    key="transaction_search"  # Unique key to prevent conflicts
                 ).strip().lower()
                 
                 # Filter items based on search
@@ -294,103 +324,141 @@ class TransactionForm:
                 
                 item_id = st.selectbox(
                     "Select Item",
-                    options=list(item_options.keys()),
-                    format_func=lambda x: item_options[x],
+                    options=list(item_options.keys()) if filtered_items else [""],
+                    format_func=lambda x: item_options.get(x, "No items found"),
                     help="Select the item for this transaction",
-                    index=default_item_index if filtered_items else 0
+                    index=default_item_index if filtered_items else 0,
+                    key="transaction_item_select"  # Unique key to prevent conflicts
                 ) if filtered_items else None
+        
+        # Get selected item details for reference
+        selected_item = next((item for item in items if item["id"] == item_id), None) if item_id else None
+        
+        if selected_item:
+            with info_col:
+                st.markdown("**Item Details**")
+                st.info(f"""
+                • Stock: {selected_item['quantity']} {selected_item['unit_type']}
+                • Cost: {format_currency(selected_item['unit_cost'])}
+                • Category: {selected_item['category']}
+                """)
             
-            # Get selected item details for reference
-            selected_item = next((item for item in items if item["id"] == item_id), None)
-            if selected_item:
-                with info_col:
-                    st.markdown("**Item Details**")
-                    st.info(f"""
-                    • Stock: {selected_item['quantity']} {selected_item['unit_type']}
-                    • Cost: {format_currency(selected_item['unit_cost'])}
-                    • Category: {selected_item['category']}
-                    """)
+            # Add a "Proceed" button to confirm item selection
+            if st.button("✅ Use Selected Item", key="confirm_item_selection"):
+                st.session_state.selected_transaction_item = selected_item
+                st.rerun()
+        
+        # Save search query to session state
+        st.session_state["item_search"] = search_query
+        return st.session_state.get("selected_transaction_item")
+
+    def render(self):
+        """Render the transaction form."""
+        # Get items for selection
+        items = st.session_state.db_manager.get_items()
+        if not items:
+            st.warning("No items available. Please add items first.")
+            return False
+        
+        st.markdown("### 🔄 New Transaction")
+        
+        # If we have a selected item, show a summary and allow changing
+        if st.session_state.get("selected_transaction_item"):
+            item = st.session_state.selected_transaction_item
+            st.success(f"Selected Item: {item['name']} ({item['category']})")
+            if st.button("🔄 Change Item", key="change_transaction_item"):
+                st.session_state.selected_transaction_item = None
+                st.rerun()
+        
+        # Render search interface first if no item is selected
+        selected_item = st.session_state.get("selected_transaction_item")
+        if not selected_item:
+            self._render_item_search(items)
+            return False
             
-            if not item_id:
-                st.warning("Please select an item to continue")
-                submit_disabled = True
-            else:
-                submit_disabled = False
-            
+        # Now render the transaction form
+        with st.form("transaction_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             
             with col1:
-                # Transaction type with default from session state
-                default_type_index = 0
-                transaction_types = ["purchase", "sale", "adjustment"]
-                if st.session_state.get("default_transaction_type"):
-                    try:
-                        default_type_index = transaction_types.index(
-                            st.session_state.default_transaction_type
-                        )
-                    except ValueError:
-                        pass
+                # Transaction type with radio buttons
+                transaction_type_icons = {
+                    "purchase": "🛍️",
+                    "sale": "💰",
+                    "transfer_in": "📥",
+                    "transfer_out": "📤"
+                }
                 
-                transaction_type = st.selectbox(
-                    "Transaction Type",
-                    options=transaction_types,
-                    help="Select the type of transaction",
-                    index=default_type_index
+                # Get default transaction type from session state
+                default_type = st.session_state.get("default_transaction_type", "purchase")
+                
+                st.write("**Transaction Type**")
+                transaction_type = st.radio(
+                    "Select Transaction Type",
+                    options=[e.value for e in TransactionType],
+                    format_func=lambda x: f"{transaction_type_icons.get(x, '•')} {x.replace('_', ' ').title()}",
+                    horizontal=True,
+                    label_visibility="collapsed",
+                    index=[e.value for e in TransactionType].index(default_type) if default_type in [e.value for e in TransactionType] else 0
                 )
                 
+                # Quantity with validation
                 quantity = st.number_input(
                     "Quantity",
                     min_value=1,
                     value=1,
-                    step=1,
-                    help=f"Enter the quantity in {selected_item['unit_type'] if selected_item else 'units'}"
+                    help=f"Current stock: {selected_item['quantity']} {selected_item['unit_type']}"
                 )
+                
+                # Show warning if selling more than available
+                if transaction_type == "sale" and quantity > selected_item["quantity"]:
+                    st.warning(f"⚠️ Not enough stock! Available: {selected_item['quantity']} {selected_item['unit_type']}")
             
             with col2:
+                # Unit price with peso symbol
                 st.markdown("**Unit Price** (₱)")
                 unit_price = st.number_input(
                     "Unit Price",
                     min_value=0.0,
-                    value=float(selected_item['unit_cost']) if selected_item else 0.0,
-                    step=0.01,
+                    value=float(selected_item["unit_cost"]),
                     format="%.2f",
-                    help="Enter the price per unit in Philippine Pesos",
+                    help="Price per unit",
                     label_visibility="collapsed"
                 )
                 
-                reference_number = st.text_input(
-                    "Reference Number",
-                    help="Enter a reference number (e.g., PO number, invoice number)"
+                # Optional notes
+                notes = st.text_area(
+                    "Notes",
+                    placeholder="Enter any additional notes about this transaction",
+                    help="Optional notes or remarks"
                 )
             
-            notes = st.text_area(
-                "Notes",
-                help="Enter any additional notes for this transaction"
-            )
+            # Show total amount
+            total_amount = quantity * unit_price
+            st.info(f"Total Amount: {format_currency(total_amount)}")
             
-            submitted = st.form_submit_button(
-                "Submit Transaction",
-                disabled=submit_disabled,
-                help="Submit the transaction" if not submit_disabled else "Please select an item first"
-            )
-            
-            if submitted and not submit_disabled:
-                # Save search query to session state
-                st.session_state["item_search"] = search_query
+            # Submit button
+            submitted = st.form_submit_button("Submit Transaction")
+            if submitted:
+                # Validate quantity for sales
+                if transaction_type == "sale" and quantity > selected_item["quantity"]:
+                    st.error("❌ Not enough stock for this sale!")
+                    return False
                 
                 # Prepare transaction data
-                data = {
-                    "item_id": item_id,
+                transaction_data = {
+                    "item_id": selected_item["id"],
                     "transaction_type": transaction_type,
                     "quantity": quantity,
                     "unit_price": unit_price,
-                    "reference_number": reference_number,
-                    "notes": notes
+                    "notes": notes.strip() if notes else None
                 }
                 
-                self.on_submit(data)
-                return data
-            return None
+                # Submit the transaction
+                if self.on_submit(transaction_data):
+                    return True
+                
+                return False
 
 class SupplierForm:
     """Form for creating and editing suppliers."""
@@ -404,59 +472,65 @@ class SupplierForm:
         """
         self.on_submit = on_submit
         self.existing_supplier = existing_supplier
-    
+
     def render(self):
         """Render the supplier form."""
-        st.markdown("### 🏢 Supplier Details")
+        # Generate a unique form key
+        form_key = f"supplier_form_{self.existing_supplier['id'] if self.existing_supplier else 'new'}"
         
-        with st.form("supplier_form", clear_on_submit=True):
-            form_container = st.container()
-            with form_container:
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    name = st.text_input(
-                        SUPPLIER_FORM_FIELDS["name"]["label"],
-                        value=self.existing_supplier.get("name", "") if self.existing_supplier else "",
-                        help=SUPPLIER_FORM_FIELDS["name"]["help"]
-                    )
-                    
-                    contact_email = st.text_input(
-                        SUPPLIER_FORM_FIELDS["contact_email"]["label"],
-                        value=self.existing_supplier.get("contact_email", "") if self.existing_supplier else "",
-                        help=SUPPLIER_FORM_FIELDS["contact_email"]["help"]
-                    )
-                    
-                    phone = st.text_input(
-                        SUPPLIER_FORM_FIELDS["phone"]["label"],
-                        value=self.existing_supplier.get("phone", "") if self.existing_supplier else "",
-                        help=SUPPLIER_FORM_FIELDS["phone"]["help"]
-                    )
-                
-                with col2:
-                    address = st.text_area(
-                        SUPPLIER_FORM_FIELDS["address"]["label"],
-                        value=self.existing_supplier.get("address", "") if self.existing_supplier else "",
-                        help=SUPPLIER_FORM_FIELDS["address"]["help"],
-                        height=100
-                    )
-                    
-                    remarks = st.text_area(
-                        SUPPLIER_FORM_FIELDS["remarks"]["label"],
-                        value=self.existing_supplier.get("remarks", "") if self.existing_supplier else "",
-                        help=SUPPLIER_FORM_FIELDS["remarks"]["help"],
-                        height=100
-                    )
+        # Prepare success message key
+        success_key = f"success_{form_key}"
+        if success_key not in st.session_state:
+            st.session_state[success_key] = False
+        
+        with st.form(form_key, clear_on_submit=True):
+            # Essential Information
+            st.subheader("Essential Information")
             
-            col_submit1, col_submit2, col_submit3 = st.columns([1, 2, 1])
-            with col_submit2:
-                submitted = st.form_submit_button(
-                    "💾 Save Supplier",
-                    use_container_width=True,
-                    type="primary"
-                )
+            name = st.text_input(
+                "Supplier Name",
+                value=self.existing_supplier.get("name", "") if self.existing_supplier else "",
+                help=SUPPLIER_FORM_FIELDS["name"]["help"]
+            ).strip()
             
-            if submitted:
+            # Contact Information
+            st.subheader("Contact Information")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                email = st.text_input(
+                    "Email",
+                    value=self.existing_supplier.get("contact_email", "") if self.existing_supplier else "",
+                    help=SUPPLIER_FORM_FIELDS["contact_email"]["help"]
+                ).strip()
+            
+            with col2:
+                phone = st.text_input(
+                    "Phone",
+                    value=self.existing_supplier.get("phone", "") if self.existing_supplier else "",
+                    help=SUPPLIER_FORM_FIELDS["phone"]["help"]
+                ).strip()
+            
+            address = st.text_area(
+                "Address",
+                value=self.existing_supplier.get("address", "") if self.existing_supplier else "",
+                help=SUPPLIER_FORM_FIELDS["address"]["help"]
+            ).strip()
+            
+            remarks = st.text_area(
+                "Notes",
+                value=self.existing_supplier.get("remarks", "") if self.existing_supplier else "",
+                help=SUPPLIER_FORM_FIELDS["remarks"]["help"],
+                placeholder="Enter any additional notes about this supplier"
+            ).strip()
+            
+            # Submit button
+            submit_label = "Update Supplier" if self.existing_supplier else "Add Supplier"
+            if st.form_submit_button(
+                submit_label,
+                use_container_width=True,
+                type="primary"
+            ):
                 # Validate required fields
                 if not name:
                     st.error("❌ Supplier name is required")
@@ -464,16 +538,26 @@ class SupplierForm:
                 
                 data = {
                     "name": name,
-                    "contact_email": contact_email,
+                    "contact_email": email,
                     "phone": phone,
                     "address": address,
                     "remarks": remarks
                 }
                 
-                # Add id if editing existing supplier
+                # Include ID if editing
                 if self.existing_supplier and "id" in self.existing_supplier:
                     data["id"] = self.existing_supplier["id"]
                 
-                self.on_submit(data)
-                return data
-            return None
+                # Call submit callback and handle result
+                if self.on_submit(data):
+                    st.session_state[success_key] = True
+                    return data
+                return None
+        
+        # Show success message outside the form
+        if st.session_state[success_key]:
+            st.success("✅ Supplier updated successfully!" if self.existing_supplier else "✅ Supplier created successfully!")
+            st.session_state[success_key] = False
+            st.rerun()
+        
+        return None

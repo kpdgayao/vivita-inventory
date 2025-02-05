@@ -18,6 +18,21 @@ class Sidebar:
             st.title("Vivita Inventory")
             
             # Navigation
+            st.markdown(
+                """
+                <style>
+                div[data-testid="stVerticalBlock"] div[data-testid="stHorizontalBlock"] button {
+                    width: 100%;
+                    text-align: left !important;
+                }
+                div[data-testid="stVerticalBlock"] div[data-testid="stHorizontalBlock"] button p {
+                    text-align: left !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+            
             st.subheader("Navigation")
             pages = {
                 "dashboard": "📊 Dashboard",
@@ -28,18 +43,36 @@ class Sidebar:
                 "settings": "⚙️ Settings"
             }
             
-            selected_page = st.radio(
-                "Go to",
-                options=list(pages.keys()),
-                format_func=lambda x: pages[x],
-                index=list(pages.keys()).index(current_page)
-            )
+            # Initialize navigation state
+            if "nav_page" not in st.session_state:
+                st.session_state.nav_page = current_page
             
-            if selected_page != current_page:
-                on_page_change(selected_page)
+            # Create navigation buttons
+            for page_key, page_label in pages.items():
+                col1, col2 = st.columns([0.1, 0.9])
+                with col2:
+                    if page_key == st.session_state.nav_page:
+                        st.markdown(f"**→ {page_label}**")
+                    else:
+                        if st.button(
+                            page_label,
+                            key=f"nav_{page_key}",
+                            use_container_width=True,
+                            on_click=lambda p=page_key: Sidebar._handle_nav_click(p)
+                        ):
+                            pass  # Button click is handled by on_click
+            
+            # If navigation state changed, trigger page change
+            if st.session_state.nav_page != current_page:
+                on_page_change(st.session_state.nav_page)
             
             # Add version info at the bottom
             st.sidebar.markdown("---")
             st.sidebar.markdown("v1.0.0")
             
             return {}
+    
+    @staticmethod
+    def _handle_nav_click(page: str):
+        """Handle navigation button click."""
+        st.session_state.nav_page = page

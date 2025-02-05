@@ -36,49 +36,133 @@ def initialize_managers():
 
 def handle_page_change(new_page: str):
     """Handle page navigation."""
+    # Store current state
+    current_editing_item = st.session_state.get("editing_item")
+    current_quick_update_item = st.session_state.get("quick_update_item")
+    current_show_new_item_form = st.session_state.get("show_new_item_form", False)
+    
+    # Update page
     st.session_state.page = new_page
+    
+    # Restore state based on the new page
+    if new_page == "inventory":
+        st.session_state.editing_item = current_editing_item
+        st.session_state.quick_update_item = current_quick_update_item
+        st.session_state.show_new_item_form = current_show_new_item_form
+    else:
+        # Reset state when leaving inventory page
+        st.session_state.editing_item = None
+        st.session_state.quick_update_item = None
+        st.session_state.show_new_item_form = False
+
+def initialize_session_state():
+    """Initialize all session state variables."""
+    # Page state
+    if "page" not in st.session_state:
+        st.session_state.page = "dashboard"
+    
+    # Form visibility states with callback functions
+    if "show_new_item_form" not in st.session_state:
+        st.session_state.show_new_item_form = False
+    if "show_new_transaction_form" not in st.session_state:
+        st.session_state.show_new_transaction_form = False
+    if "show_new_supplier_form" not in st.session_state:
+        st.session_state.show_new_supplier_form = False
+    
+    # Selection states
+    if "selected_item_id" not in st.session_state:
+        st.session_state.selected_item_id = None
+    if "selected_supplier_id" not in st.session_state:
+        st.session_state.selected_supplier_id = None
+    if "selected_transaction_item" not in st.session_state:
+        st.session_state.selected_transaction_item = None
+    
+    # Transaction states
+    if "default_transaction_type" not in st.session_state:
+        st.session_state.default_transaction_type = None
+    
+    # Editing states
+    if "editing_item" not in st.session_state:
+        st.session_state.editing_item = None
+    if "editing_supplier" not in st.session_state:
+        st.session_state.editing_supplier = None
+    if "quick_update_item" not in st.session_state:
+        st.session_state.quick_update_item = None
+    
+    # Navigation state
+    if "nav_page" not in st.session_state:
+        st.session_state.nav_page = st.session_state.page
+
+def on_new_item_click():
+    """Callback for new item button."""
+    handle_page_change("inventory")
+    st.session_state.show_new_item_form = True
+
+def on_new_transaction_click():
+    """Callback for new transaction button."""
+    handle_page_change("transactions")
+    st.session_state.show_new_transaction_form = True
+
+def on_new_supplier_click():
+    """Callback for new supplier button."""
+    st.session_state.show_new_supplier_form = True
+    st.session_state.editing_supplier = None
+
+def on_edit_item_click(item_id: str):
+    """Callback for edit item button."""
+    st.session_state.editing_item = item_id
+    st.session_state.show_new_item_form = False
+
+def on_edit_supplier_click(supplier_id: str):
+    """Callback for edit supplier button."""
+    supplier = st.session_state.db_manager.get_supplier(supplier_id)
+    if supplier:
+        st.session_state.editing_supplier = supplier
+        st.session_state.show_new_supplier_form = False
+
+def on_order_item_click(item_id: str):
+    """Callback for order item button."""
+    handle_page_change("transactions")
+    st.session_state.show_new_transaction_form = True
+    st.session_state.selected_item_id = item_id
+    st.session_state.default_transaction_type = "purchase"
 
 def handle_item_submit(item_data: Dict[str, Any]):
     """Handle item form submission."""
     db = st.session_state.db_manager
     
-    # Ensure quantity is an integer
-    if "quantity" in item_data:
-        try:
-            item_data["quantity"] = int(item_data["quantity"])
-        except (ValueError, TypeError):
-            item_data["quantity"] = 0
-    
-    if "id" in item_data:
-        # Update existing item
-        result = db.update_item(item_data["id"], item_data)
-        if result:
-            st.session_state.show_success = "✅ Item updated successfully!"
-            st.session_state.show_new_item_form = False  # Close the form
+    try:
+        if "id" in item_data:
+            # Update existing item
+            result = db.update_item(item_data["id"], item_data)
+            if result:
+                st.session_state.show_success = "✅ Item updated successfully!"
+                st.session_state.editing_item = None
+                # Clear the form state immediately
+                if "show_new_item_form" in st.session_state:
+                    del st.session_state.show_new_item_form
+                st.rerun()
+            else:
+                st.error("❌ Failed to update item")
         else:
-            st.error("❌ Failed to update item")
-            return
-    else:
-        # Create new item
-        try:
+            # Create new item
             result = db.create_item(item_data)
             if result:
                 st.session_state.show_success = "✅ Item created successfully!"
-                st.session_state.show_new_item_form = False  # Close the form
+                st.session_state.show_new_item_form = False
+                # Clear any editing state
+                if "editing_item" in st.session_state:
+                    del st.session_state.editing_item
+                st.rerun()
             else:
-                st.error("❌ Failed to create item. Please check all required fields are filled correctly.")
-                return
-        except ValueError as e:
-            st.error(f"❌ {str(e)}")
-            return
-        except Exception as e:
-            st.error(f"❌ An unexpected error occurred: {str(e)}")
-            return
+                st.error("❌ Failed to create item")
+    except Exception as e:
+        st.error(f"❌ An error occurred: {str(e)}")
+        return False
     
-    # Only rerun if we had a success
-    st.rerun()
+    return True
 
-def handle_transaction_submit(transaction_data: Dict[str, Any]):
+def handle_transaction_submit(transaction_data: Dict[str, Any]) -> bool:
     """Handle transaction form submission."""
     try:
         print(f"Submitting transaction: {transaction_data}")  # Debug log
@@ -105,8 +189,11 @@ def handle_transaction_submit(transaction_data: Dict[str, Any]):
         result = st.session_state.db_manager.create_transaction(transaction_data)
         
         if result:
-            st.success("✅ Transaction recorded successfully!")
+            # Set success message and reset form state
+            st.session_state.show_success = f"✅ {transaction_data['transaction_type'].title()} transaction recorded successfully!"
             st.session_state.show_new_transaction_form = False
+            st.session_state.selected_item_id = None
+            st.session_state.default_transaction_type = None
             st.rerun()
             return True
         else:
@@ -121,63 +208,85 @@ def handle_transaction_submit(transaction_data: Dict[str, Any]):
         print(f"Error in handle_transaction_submit: {e}")  # Debug log
         return False
 
-def handle_supplier_submit(supplier_data: Dict[str, Any]):
+def handle_supplier_submit(supplier_data: Dict[str, Any]) -> bool:
     """Handle supplier form submission."""
     db = st.session_state.db_manager
     
-    if "id" in supplier_data:
-        # Update existing supplier
-        result = db.update_supplier(supplier_data["id"], supplier_data)
-        if result:
-            st.session_state.show_success = "✅ Supplier updated successfully!"
-            st.session_state.editing_supplier = None  # Clear editing state
-            st.rerun()
+    try:
+        if "id" in supplier_data:
+            # Update existing supplier
+            result = db.update_supplier(supplier_data["id"], supplier_data)
+            if result:
+                st.session_state.show_success = "✅ Supplier updated successfully!"
+                st.session_state.editing_supplier = None
+                st.rerun()
+                return True
+            else:
+                st.error("❌ Failed to update supplier")
+                return False
         else:
-            st.error("❌ Failed to update supplier")
-    else:
-        # Create new supplier
-        result = db.create_supplier(supplier_data)
-        if result:
-            st.session_state.show_success = "✅ Supplier created successfully!"
-            st.session_state.show_new_supplier_form = False  # Close the form
-            st.rerun()
-        else:
-            st.error("❌ Failed to create supplier")
+            # Create new supplier
+            result = db.create_supplier(supplier_data)
+            if result:
+                st.session_state.show_success = "✅ New supplier added successfully!"
+                st.session_state.show_new_supplier_form = False
+                st.rerun()
+                return True
+            else:
+                st.error("❌ Failed to create supplier")
+                return False
+    except Exception as e:
+        st.error(f"❌ An error occurred: {str(e)}")
+        return False
 
 def render_inventory_page():
     """Render the inventory management page."""
-    st.title("📦 Inventory Management")
+    # Initialize session state for inventory page
+    if "editing_item" not in st.session_state:
+        st.session_state.editing_item = None
+    if "quick_update_item" not in st.session_state:
+        st.session_state.quick_update_item = None
+    if "show_new_item_form" not in st.session_state:
+        st.session_state.show_new_item_form = False
+
+    st.title("Inventory Management")
     
     # Show success message if present
     if "show_success" in st.session_state:
         st.success(st.session_state.show_success)
         del st.session_state.show_success
     
-    # Initialize session state variables
-    if "editing_item" not in st.session_state:
-        st.session_state.editing_item = None
-    if "quick_update_item" not in st.session_state:
-        st.session_state.quick_update_item = None
+    # Initialize managers if needed
+    initialize_managers()
     
-    # Tabs for different inventory views
-    tab1, tab2 = st.tabs([
-        "🗂️ Item List",
-        "➕ Add Items"
-    ])
+    # Get all items
+    items = st.session_state.db_manager.get_items()
+    
+    # Create tabs for different views
+    tab1, tab2 = st.tabs(["📋 Item List", "➕ New Item"])
     
     with tab1:
-        # Search and filter
-        col1, col2 = st.columns([3, 1])
+        # Filters and search
+        col1, col2, col3 = st.columns(3)
         with col1:
-            search = st.text_input("🔍 Search items by name, SKU, or description")
+            search = st.text_input("🔍 Search Items", key="inventory_search")
         with col2:
+            category_filter = st.selectbox(
+                "Filter by Category",
+                ["All"] + [e.value for e in CategoryType],
+                key="inventory_category_filter"
+            )
+        with col3:
             sort_by = st.selectbox(
                 "Sort by",
-                ["Name ↑", "Name ↓", "Stock ↑", "Stock ↓", "Category"]
+                ["Name ↑", "Name ↓", "Stock ↑", "Stock ↓", "Category"],
+                key="inventory_sort"
             )
         
-        # Get and filter items
-        items = st.session_state.db_manager.get_items()
+        # Apply filters
+        if category_filter != "All":
+            items = [item for item in items if item["category"] == category_filter]
+        
         if search:
             search = search.lower()
             items = [
@@ -199,79 +308,50 @@ def render_inventory_page():
         elif sort_by == "Category":
             items.sort(key=lambda x: (x["category"], x["name"]))
         
-        # Display items in a scrollable container
-        with st.container():
-            for item in items:
-                with st.expander(
-                    f"{item['name']} ({item['quantity']} {item['unit_type']})",
-                    expanded=st.session_state.editing_item == item["id"] or st.session_state.quick_update_item == item["id"]
-                ):
-                    if st.session_state.editing_item == item["id"]:
-                        # Show edit form
-                        st.subheader("📝 Edit Item")
-                        edit_form = ItemForm(handle_item_submit, item)
-                        edit_form.render()
-                        if st.button("Cancel Edit", key=f"cancel_edit_{item['id']}"):
-                            st.session_state.editing_item = None
+        # Display items in a table with actions
+        for item in items:
+            with st.expander(
+                f"{item['name']} ({item['quantity']} {item['unit_type']})",
+                expanded=st.session_state.editing_item == item["id"]
+            ):
+                if st.session_state.editing_item == item["id"]:
+                    # Show edit form
+                    item_form = ItemForm(
+                        on_submit=handle_item_submit,
+                        existing_item=item
+                    )
+                    item_form.render()
+                    
+                    if st.button("Cancel", key=f"cancel_{item['id']}"):
+                        st.session_state.editing_item = None
+                        st.rerun()
+                else:
+                    # Show item details and actions
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    with col1:
+                        st.write(f"**SKU:** {item.get('sku', 'N/A')}")
+                        st.write(f"**Category:** {item['category']}")
+                        if item.get('description'):
+                            st.write(f"**Description:** {item['description']}")
+                    
+                    with col2:
+                        st.write(f"**Min Quantity:** {item.get('min_quantity', 0)}")
+                        st.write(f"**Unit Cost:** ${item.get('unit_cost', 0):.2f}")
+                        st.write(f"**Unit Price:** ${item.get('unit_price', 0):.2f}")
+                    
+                    with col3:
+                        # Action buttons
+                        if st.button("✏️ Edit", key=f"edit_{item['id']}", use_container_width=True, on_click=on_edit_item_click, args=(item["id"],)):
+                            pass
+                        
+                        if st.button("🔄 Quick Update", key=f"quick_{item['id']}", use_container_width=True):
+                            st.session_state.quick_update_item = item
+                            st.session_state.show_new_transaction_form = True
                             st.rerun()
-                    elif st.session_state.quick_update_item == item["id"]:
-                        # Show quick update form
-                        st.subheader("🔄 Quick Update")
-                        with st.form(key=f"quick_update_{item['id']}"):
-                            new_qty = st.number_input(
-                                "New Quantity",
-                                value=item["quantity"],
-                                min_value=0,
-                                step=1
-                            )
-                            col1, col2 = st.columns([1, 1])
-                            with col1:
-                                if st.form_submit_button("Update"):
-                                    result = st.session_state.db_manager.update_item(
-                                        item["id"],
-                                        {"quantity": new_qty}
-                                    )
-                                    if result:
-                                        st.session_state.show_success = "✅ Quantity updated successfully!"
-                                        st.session_state.quick_update_item = None
-                                        st.rerun()
-                                    else:
-                                        st.error("Failed to update quantity")
-                            with col2:
-                                if st.form_submit_button("Cancel"):
-                                    st.session_state.quick_update_item = None
-                                    st.rerun()
-                    else:
-                        # Show item details
-                        col1, col2, col3 = st.columns([2, 2, 1])
-                        
-                        with col1:
-                            st.caption("Details")
-                            st.write(f"**Category:** {item['category'].replace('_', ' ').title()}")
-                            st.write(f"**SKU:** {item.get('sku', 'N/A')}")
-                            if item.get('description'):
-                                st.write(f"**Description:** {item['description']}")
-                        
-                        with col2:
-                            st.write("**Stock Info**")
-                            st.write(f"**Unit Cost:** {format_currency(item['unit_cost'])}")
-                            st.write(f"**Min Quantity:** {item['min_quantity']}")
-                            if item.get('max_quantity'):
-                                st.write(f"**Max Quantity:** {item['max_quantity']}")
-                        
-                        with col3:
-                            st.write("**Actions**")
-                            if st.button("📝 Edit", key=f"edit_{item['id']}"):
-                                st.session_state.editing_item = item["id"]
-                                st.rerun()
-                            
-                            if st.button("🔄 Quick Update", key=f"quick_{item['id']}"):
-                                st.session_state.quick_update_item = item["id"]
-                                st.rerun()
     
     with tab2:
         # Single item form
-        form = ItemForm(handle_item_submit)
+        form = ItemForm(on_submit=handle_item_submit)
         form.render()
 
 def render_transactions_page():
@@ -282,11 +362,16 @@ def render_transactions_page():
     if "show_new_transaction_form" not in st.session_state:
         st.session_state.show_new_transaction_form = False
     
+    # Show success message if present
+    if "show_success" in st.session_state:
+        st.success(st.session_state.show_success)
+        del st.session_state.show_success
+    
     # Add new transaction button
     col1, col2 = st.columns([1, 3])
     with col1:
         if st.button("➕ New Transaction", use_container_width=True):
-            st.session_state.show_new_transaction_form = True
+            on_new_transaction_click()
             st.rerun()
     
     # Show transaction form if requested
@@ -299,8 +384,6 @@ def render_transactions_page():
         if st.button("Cancel"):
             st.session_state.show_new_transaction_form = False
             st.session_state.selected_item_id = None
-            st.rerun()
-        st.divider()
     
     # Get transactions and items
     transactions = st.session_state.db_manager.get_transactions()
@@ -460,22 +543,21 @@ def render_suppliers_page():
     """Render the supplier management page."""
     st.title("Supplier Management")
     
-    # Show success message if present
-    if "show_success" in st.session_state:
-        st.success(st.session_state.show_success)
-        del st.session_state.show_success
-    
     # Initialize session state
     if "show_new_supplier_form" not in st.session_state:
         st.session_state.show_new_supplier_form = False
     if "editing_supplier" not in st.session_state:
         st.session_state.editing_supplier = None
     
+    # Show success message if present
+    if "show_success" in st.session_state:
+        st.success(st.session_state.show_success)
+        del st.session_state.show_success
+    
     # Add new supplier button (only show if not editing)
     if not st.session_state.editing_supplier and not st.session_state.show_new_supplier_form:
-        if st.button("➕ Add New Supplier"):
-            st.session_state.show_new_supplier_form = True
-            st.rerun()
+        if st.button("➕ Add New Supplier", on_click=on_new_supplier_click):
+            pass
     
     # Edit form
     if st.session_state.editing_supplier:
@@ -485,7 +567,6 @@ def render_suppliers_page():
         if st.button("Cancel Edit"):
             st.session_state.editing_supplier = None
             st.rerun()
-        return
     
     # New supplier form
     if st.session_state.show_new_supplier_form:
@@ -495,7 +576,6 @@ def render_suppliers_page():
         if st.button("Cancel"):
             st.session_state.show_new_supplier_form = False
             st.rerun()
-        return
     
     # Supplier list
     suppliers = st.session_state.db_manager.get_suppliers()
@@ -506,36 +586,20 @@ def render_suppliers_page():
     
     for supplier in suppliers:
         with st.expander(f"{supplier['name']}"):
-            col1, col2, col3 = st.columns([2, 1, 1])
-            
+            col1, col2 = st.columns([3, 1])
             with col1:
-                st.write("**Contact Information**")
-                if supplier.get("contact_email"):
-                    st.write(f"📧 Email: {supplier['contact_email']}")
-                if supplier.get("phone"):
-                    st.write(f"📞 Phone: {supplier['phone']}")
-                if supplier.get("address"):
-                    st.write(f"📍 Address: {supplier['address']}")
-            
+                st.write(f"**Contact:** {supplier.get('contact_name', 'N/A')}")
+                st.write(f"**Email:** {supplier.get('email', 'N/A')}")
+                st.write(f"**Phone:** {supplier.get('phone', 'N/A')}")
+                if supplier.get('notes'):
+                    st.write(f"**Notes:** {supplier['notes']}")
             with col2:
-                st.write("**Notes**")
-                if supplier.get("remarks"):
-                    st.write(supplier["remarks"])
-                else:
-                    st.write("No remarks")
-            
-            with col3:
-                st.write("**Actions**")
-                if st.button("✏️ Edit", key=f"edit_{supplier['id']}"):
-                    st.session_state.editing_supplier = supplier
-                    st.rerun()
-                
-                if st.button("❌ Delete", key=f"delete_{supplier['id']}"):
-                    if st.session_state.db_manager.delete_supplier(supplier["id"]):
-                        st.success("Supplier deleted successfully!")
-                        st.rerun()
-                    else:
-                        st.error("Failed to delete supplier")
+                st.button(
+                    "✏️ Edit",
+                    key=f"edit_{supplier['id']}",
+                    on_click=on_edit_supplier_click,
+                    args=(supplier['id'],)
+                )
 
 def render_analytics_page():
     """Render the analytics page."""
@@ -795,17 +859,24 @@ def render_settings_page_original():
         if uploaded_file is not None:
             st.info("ℹ️ Import functionality coming soon!")
 
+def render_dashboard_page():
+    """Render the dashboard page."""
+    dashboard = Dashboard(st.session_state.analytics_manager)
+    dashboard.render(
+        on_new_item=on_new_item_click,
+        on_new_transaction=on_new_transaction_click,
+        on_order_click=on_order_item_click
+    )
+
 def main():
     """Main entry point for the Streamlit application."""
-    # Initialize managers
+    # Initialize managers and session state
     initialize_managers()
-    
-    # Initialize page state if not exists
-    if "page" not in st.session_state:
-        st.session_state.page = "dashboard"
+    initialize_session_state()
     
     # Create sidebar and dashboard with proper dependencies
-    filters = Sidebar.render(handle_page_change, st.session_state.page)
+    sidebar = Sidebar()
+    sidebar.render(handle_page_change, st.session_state.page)
     dashboard = Dashboard(st.session_state.analytics_manager)
     
     # Custom CSS for better styling

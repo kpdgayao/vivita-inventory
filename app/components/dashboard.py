@@ -53,15 +53,19 @@ class Dashboard:
             st.markdown("### ⚡ Quick Actions")
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("➕ New Item"):
-                    st.session_state.page = "inventory"
-                    st.session_state.show_new_item_form = True
-                    st.rerun()
+                st.button(
+                    "➕ New Item",
+                    key="quick_new_item",
+                    use_container_width=True,
+                    on_click=self._handle_new_item_click
+                )
             with col2:
-                if st.button("🔄 New Transaction"):
-                    st.session_state.page = "transactions"
-                    st.session_state.show_new_transaction_form = True
-                    st.rerun()
+                st.button(
+                    "🔄 New Transaction",
+                    key="quick_new_transaction",
+                    use_container_width=True,
+                    on_click=self._handle_new_transaction_click
+                )
 
     def render_stock_alerts(self):
         """Render critical stock alerts."""
@@ -70,34 +74,61 @@ class Dashboard:
         if not alerts:
             return
         
-        # Only show if there are alerts
         st.markdown("### 🚨 Critical Items")
         
-        # Show only top 5 most critical items
         critical_items = sorted(
             alerts,
-            key=lambda x: (x['current_quantity'] / x['min_quantity'])
+            key=lambda x: (x['quantity'] / x['min_quantity']) if x['min_quantity'] > 0 else float('inf')
         )[:5]
         
         for alert in critical_items:
-            shortage_percent = (alert['min_quantity'] - alert['current_quantity']) / alert['min_quantity'] * 100
+            shortage_percent = ((alert['min_quantity'] - alert['quantity']) / alert['min_quantity'] * 100) if alert['min_quantity'] > 0 else 0
             with st.expander(
-                f"⚠️ {alert['name']} ({alert['current_quantity']} of {alert['min_quantity']} units)",
+                f"⚠️ {alert['name']} ({alert['quantity']} {alert['unit_type']} of {alert['min_quantity']} min)",
                 expanded=True
             ):
                 cols = st.columns([3, 1])
                 with cols[0]:
-                    # Show a progress bar for visual representation
+                    progress = min(1.0, alert['quantity'] / alert['min_quantity']) if alert['min_quantity'] > 0 else 0
                     st.progress(
-                        alert['current_quantity'] / alert['min_quantity'],
+                        progress,
                         text=f"Stock Level: {shortage_percent:.1f}% below minimum"
                     )
                 
                 with cols[1]:
-                    if st.button("📦 Order", key=f"order_{alert['id']}", use_container_width=True):
-                        st.session_state["show_new_transaction_form"] = True
-                        st.session_state["selected_item_id"] = alert['id']
-                        st.session_state["default_transaction_type"] = "purchase"
+                    st.button(
+                        "📦 Order",
+                        key=f"order_{alert['id']}",
+                        use_container_width=True,
+                        on_click=self._handle_order_click,
+                        args=(alert['id'],)
+                    )
+
+    def _handle_new_item_click(self):
+        """Handle new item button click."""
+        # Initialize all required session state variables
+        st.session_state.show_new_item_form = True
+        st.session_state.editing_item = None
+        st.session_state.quick_update_item = None
+        st.session_state.selected_item_id = None
+        st.session_state.nav_page = "inventory"
+
+    def _handle_new_transaction_click(self):
+        """Handle new transaction button click."""
+        # Initialize all required session state variables
+        st.session_state.show_new_transaction_form = True
+        st.session_state.selected_item_id = None
+        st.session_state.editing_item = None
+        st.session_state.nav_page = "transactions"
+
+    def _handle_order_click(self, item_id: str):
+        """Handle order button click."""
+        # Initialize all required session state variables
+        st.session_state["show_new_transaction_form"] = True
+        st.session_state["selected_item_id"] = item_id
+        st.session_state["default_transaction_type"] = "purchase"
+        st.session_state.editing_item = None
+        st.session_state.nav_page = "transactions"
 
     def render_transaction_chart(self):
         """Render simplified transaction trends."""
@@ -146,9 +177,7 @@ class Dashboard:
         for item in inventory_data:
             # Add select button
             if st.button("Select", key=f"select_{item['id']}"):
-                st.session_state.selected_item = item
-                st.session_state.current_page = "transactions"
-                st.experimental_rerun()
+                pass  # Removed state handling
 
             data.append({
                 "Name": item["name"],
@@ -224,5 +253,9 @@ class Dashboard:
         # 3. Recent Activity
         self.render_transaction_chart()
         
-        # 4. Category Overview (if multiple categories exist)
+        # 4. Category Analysis (if enough data)
         self.render_category_analysis()
+
+        # Handle navigation if needed
+        if hasattr(st.session_state, 'nav_page') and st.session_state.nav_page != "dashboard":
+            st.session_state.page = st.session_state.nav_page

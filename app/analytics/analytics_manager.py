@@ -360,8 +360,8 @@ class AnalyticsManager:
         for category, category_items in categories.items():
             value = calculate_total_value(category_items, transactions)
             category_values.append({
-                'category': category,
-                'value': float(value)
+                "category": category,
+                "value": float(value)
             })
         
         # Sort by value descending
@@ -388,24 +388,37 @@ class AnalyticsManager:
 
     def get_stock_alerts(self) -> List[Dict[str, Any]]:
         """Get list of items requiring attention."""
-        low_stock_items = self.db.get_low_stock_items()
-        df = pd.DataFrame(low_stock_items)
-        
-        if df.empty:
+        try:
+            # Get items that are below their minimum quantity
+            items = self.db.get_items()
+            if not items:
+                return []
+            
+            alerts = []
+            for item in items:
+                if not item.get('is_active', True):
+                    continue
+                    
+                quantity = item.get('quantity', 0)
+                min_quantity = item.get('min_quantity', 0)
+                
+                if quantity <= min_quantity:
+                    alerts.append({
+                        "id": item.get("id"),
+                        "name": item.get("name", "Unknown Item"),
+                        "quantity": quantity,
+                        "min_quantity": min_quantity,
+                        "unit_type": item.get("unit_type", "units"),
+                        "category": item.get("category", "Uncategorized")
+                    })
+            
+            # Sort by how far below minimum quantity they are
+            alerts.sort(key=lambda x: (x["quantity"] - x["min_quantity"]))
+            return alerts
+            
+        except Exception as e:
+            print(f"Error in get_stock_alerts: {str(e)}")
             return []
-
-        alerts = []
-        for _, item in df.iterrows():
-            alerts.append({
-                "id": item["id"],
-                "name": item["name"],
-                "current_quantity": item["quantity"],
-                "min_quantity": item["min_quantity"],
-                "shortage": item["min_quantity"] - item["quantity"],
-                "last_ordered": item["last_ordered_at"]
-            })
-        
-        return alerts
 
     def get_recent_transactions(self, limit: int = 5) -> List[Dict[str, Any]]:
         """Get the most recent transactions.

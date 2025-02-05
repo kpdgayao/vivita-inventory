@@ -7,14 +7,8 @@ class TransactionType(str, Enum):
     """Valid transaction types."""
     PURCHASE = "purchase"
     SALE = "sale"
-    ADJUSTMENT = "adjustment"
-    RETURN = "return"
     TRANSFER_IN = "transfer_in"
     TRANSFER_OUT = "transfer_out"
-    LOSS = "loss"
-    WRITE_OFF = "write_off"
-    CREDIT_NOTE = "credit_note"
-    DEBIT_NOTE = "debit_note"
 
 class UnitType(str, Enum):
     """Valid unit types."""

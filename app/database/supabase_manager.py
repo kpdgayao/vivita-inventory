@@ -285,8 +285,15 @@ class SupabaseManager:
     def get_supplier(self, supplier_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a single supplier by ID."""
         try:
+            print(f"\n=== Getting Supplier {supplier_id} ===")
             response = self.client.table("suppliers").select("*").eq("id", supplier_id).single().execute()
-            return response.data if response.data else None
+            
+            if not response.data:
+                print("No supplier found with ID:", supplier_id)
+                return None
+            
+            print("Retrieved supplier:", response.data)
+            return response.data
         except Exception as e:
             print(f"Error retrieving supplier: {e}")
             import traceback
@@ -364,17 +371,20 @@ class SupabaseManager:
             print("\n=== Updating Supplier ===")
             print("Initial update data:", supplier_data)
             
-            # Remove any None values
-            update_data = {k: v for k, v in supplier_data.items() if v is not None}
+            # Remove any None values and id from update data
+            update_data = {k: v for k, v in supplier_data.items() if v is not None and k != 'id'}
             print("Filtered update data:", update_data)
             
             # Update the updated_at timestamp
             update_data["updated_at"] = get_ph_timestamp()
             
             response = self.client.table("suppliers").update(update_data).eq("id", supplier_id).execute()
+            print("Update response:", response)
             
             if not response.data:
                 print("Error: No data returned from update operation")
+                if hasattr(response, 'error'):
+                    print("Error details:", response.error)
                 return None
             
             print("Updated supplier:", response.data[0])
