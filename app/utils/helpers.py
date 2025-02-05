@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import re
 import uuid
 from decimal import Decimal
+import pytz
 
 def generate_sku(
     category: str,
@@ -128,15 +129,100 @@ def parse_date_range(
     
     return start_date, end_date
 
-def calculate_total_value(
-    items: List[Dict[str, Any]]
+def get_ph_time() -> datetime:
+    """Get current time in Philippine timezone (GMT+8)."""
+    ph_tz = pytz.timezone('Asia/Manila')
+    return datetime.now(ph_tz)
+
+def format_timestamp(timestamp_str: str, format: str = "%Y-%m-%d %H:%M") -> str:
+    """
+    Format a timestamp string to Philippine time.
+    
+    Args:
+        timestamp_str: ISO format timestamp string
+        format: Optional strftime format string
+    
+    Returns:
+        Formatted timestamp string in Philippine time
+    """
+    # Remove 'Z' if present and add UTC timezone if no timezone info
+    if timestamp_str.endswith('Z'):
+        timestamp_str = timestamp_str[:-1] + '+00:00'
+    elif '+' not in timestamp_str and '-' not in timestamp_str:
+        timestamp_str += '+00:00'
+    
+    # Parse the timestamp
+    timestamp = datetime.fromisoformat(timestamp_str)
+    
+    # Convert to Philippine time
+    ph_tz = pytz.timezone('Asia/Manila')
+    ph_time = timestamp.astimezone(ph_tz)
+    
+    return ph_time.strftime(format)
+
+def get_ph_timestamp() -> str:
+    """Get current timestamp in Philippine time, ISO format."""
+    return get_ph_time().isoformat()
+
+def calculate_weighted_average_cost(
+    transactions: List[Dict[str, Any]]
 ) -> Decimal:
-    """Calculate total value of inventory items."""
+    """
+    Calculate the weighted average cost of inventory based on purchase transactions.
+    
+    Args:
+        transactions: List of transaction records with quantity and unit_price
+        
+    Returns:
+        Weighted average cost per unit
+    """
+    total_cost = Decimal('0')
+    total_quantity = Decimal('0')
+    
+    for transaction in transactions:
+        if transaction['transaction_type'] == 'purchase':
+            quantity = Decimal(str(transaction.get('quantity', 0)))
+            unit_price = Decimal(str(transaction.get('unit_price', 0)))
+            total_cost += quantity * unit_price
+            total_quantity += quantity
+    
+    return total_cost / total_quantity if total_quantity > 0 else Decimal('0')
+
+def calculate_total_value(
+    items: List[Dict[str, Any]],
+    transactions: Optional[List[Dict[str, Any]]] = None
+) -> Decimal:
+    """
+    Calculate total value of inventory items using weighted average cost if transactions are provided.
+    
+    Args:
+        items: List of inventory items
+        transactions: Optional list of transactions to calculate weighted average cost
+        
+    Returns:
+        Total inventory value
+    """
     total = Decimal('0')
+    
     for item in items:
         quantity = Decimal(str(item.get('quantity', 0)))
-        unit_cost = Decimal(str(item.get('unit_cost', 0)))
+        
+        # If we have transactions, use weighted average cost
+        if transactions:
+            item_transactions = [
+                t for t in transactions 
+                if t.get('item_id') == item.get('id')
+            ]
+            if item_transactions:
+                unit_cost = calculate_weighted_average_cost(item_transactions)
+            else:
+                unit_cost = Decimal(str(item.get('unit_cost', 0)))
+        else:
+            # Fall back to current unit_cost if no transactions
+            unit_cost = Decimal(str(item.get('unit_cost', 0)))
+            
         total += quantity * unit_cost
+    
     return total
 
 def generate_transaction_reference() -> str:
