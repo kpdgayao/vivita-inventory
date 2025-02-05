@@ -18,84 +18,13 @@ from app.analytics.analytics_manager import AnalyticsManager
 # Load environment variables
 load_dotenv()
 
-# Page configuration
+# Page configuration - must be the first Streamlit command
 st.set_page_config(
     page_title="Vivita Inventory",
     page_icon="📦",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Custom CSS for better styling
-st.markdown("""
-    <style>
-        /* Improve spacing and readability */
-        .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }
-        
-        /* Better heading styles */
-        h1 {
-            color: #1f77b4;
-            font-size: 2.5rem !important;
-            font-weight: 700 !important;
-            margin-bottom: 1.5rem !important;
-        }
-        h2 {
-            color: #2c3e50;
-            font-size: 1.8rem !important;
-            font-weight: 600 !important;
-            margin-bottom: 1rem !important;
-        }
-        
-        /* Improved metric cards */
-        [data-testid="stMetricValue"] {
-            font-size: 1.8rem !important;
-            font-weight: 700 !important;
-            color: #1f77b4 !important;
-        }
-        [data-testid="stMetricLabel"] {
-            font-size: 1rem !important;
-            font-weight: 600 !important;
-            color: #2c3e50 !important;
-        }
-        
-        /* Better form styling */
-        .stTextInput, .stNumberInput, .stSelectbox {
-            margin-bottom: 1rem !important;
-        }
-        
-        /* Improved button styling */
-        .stButton button {
-            width: 100%;
-            border-radius: 4px !important;
-            padding: 0.5rem 1rem !important;
-            font-weight: 600 !important;
-        }
-        
-        /* Better expander styling */
-        .streamlit-expanderHeader {
-            font-size: 1.1rem !important;
-            font-weight: 600 !important;
-            color: #2c3e50 !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# Initialize session state
-if "page" not in st.session_state:
-    st.session_state.page = "dashboard"
-if "show_new_item_form" not in st.session_state:
-    st.session_state.show_new_item_form = False
-if "show_new_transaction_form" not in st.session_state:
-    st.session_state.show_new_transaction_form = False
-if "show_new_supplier_form" not in st.session_state:
-    st.session_state.show_new_supplier_form = False
-if "selected_item_id" not in st.session_state:
-    st.session_state.selected_item_id = None
-if "selected_supplier_id" not in st.session_state:
-    st.session_state.selected_supplier_id = None
 
 def initialize_managers():
     """Initialize database and analytics managers."""
@@ -108,7 +37,6 @@ def initialize_managers():
 def handle_page_change(new_page: str):
     """Handle page navigation."""
     st.session_state.page = new_page
-    st.rerun()
 
 def handle_item_submit(item_data: Dict[str, Any]):
     """Handle item form submission."""
@@ -325,14 +253,14 @@ def render_inventory_page():
                                 st.write(f"**Description:** {item['description']}")
                         
                         with col2:
-                            st.caption("Stock Info")
+                            st.write("**Stock Info**")
                             st.write(f"**Unit Cost:** {format_currency(item['unit_cost'])}")
                             st.write(f"**Min Quantity:** {item['min_quantity']}")
                             if item.get('max_quantity'):
                                 st.write(f"**Max Quantity:** {item['max_quantity']}")
                         
                         with col3:
-                            st.caption("Actions")
+                            st.write("**Actions**")
                             if st.button("📝 Edit", key=f"edit_{item['id']}"):
                                 st.session_state.editing_item = item["id"]
                                 st.rerun()
@@ -868,44 +796,96 @@ def render_settings_page_original():
             st.info("ℹ️ Import functionality coming soon!")
 
 def main():
-    """Main application entry point."""
+    """Main entry point for the Streamlit application."""
     # Initialize managers
     initialize_managers()
     
-    # Render sidebar
+    # Initialize page state if not exists
+    if "page" not in st.session_state:
+        st.session_state.page = "dashboard"
+    
+    # Create sidebar and dashboard with proper dependencies
     filters = Sidebar.render(handle_page_change, st.session_state.page)
+    dashboard = Dashboard(st.session_state.analytics_manager)
     
-    # Handle transaction form
-    if st.session_state.get("show_new_transaction_form", False):
-        st.subheader("New Transaction")
-        
-        # Get selected item if any
-        selected_item = None
-        if st.session_state.get("selected_item_id"):
-            selected_item = st.session_state.db_manager.get_item(
-                st.session_state.selected_item_id
-            )
-        
-        # Create and render the transaction form
-        form = TransactionForm(handle_transaction_submit)
-        if form.render():
-            # Form submission is handled by the callback
-            pass
-        
-        if st.button("Cancel"):
-            st.session_state.show_new_transaction_form = False
-            st.session_state.selected_item_id = None
-            st.rerun()
-    
-    # Render main content
+    # Custom CSS for better styling
+    st.markdown("""
+        <style>
+            /* Improve spacing and readability */
+            .block-container {
+                padding-top: 2rem;
+                padding-bottom: 2rem;
+            }
+            
+            /* Better heading styles */
+            h1 {
+                color: #1f77b4;
+                font-size: 2.5rem !important;
+                font-weight: 700 !important;
+                margin-bottom: 1.5rem !important;
+            }
+            h2 {
+                color: #2c3e50;
+                font-size: 1.8rem !important;
+                font-weight: 600 !important;
+                margin-bottom: 1rem !important;
+            }
+            
+            /* Improved metric cards */
+            [data-testid="stMetricValue"] {
+                font-size: 1.8rem !important;
+                font-weight: 700 !important;
+                color: #1f77b4 !important;
+            }
+            [data-testid="stMetricLabel"] {
+                font-size: 1rem !important;
+                font-weight: 600 !important;
+                color: #2c3e50 !important;
+            }
+            
+            /* Better form styling */
+            .stTextInput, .stNumberInput, .stSelectbox {
+                margin-bottom: 1rem !important;
+            }
+            
+            /* Improved button styling */
+            .stButton button {
+                width: 100%;
+                border-radius: 4px !important;
+                padding: 0.5rem 1rem !important;
+                font-weight: 600 !important;
+            }
+            
+            /* Better expander styling */
+            .streamlit-expanderHeader {
+                font-size: 1.1rem !important;
+                font-weight: 600 !important;
+                color: #2c3e50 !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Initialize session state
+    if "show_new_item_form" not in st.session_state:
+        st.session_state.show_new_item_form = False
+    if "show_new_transaction_form" not in st.session_state:
+        st.session_state.show_new_transaction_form = False
+    if "show_new_supplier_form" not in st.session_state:
+        st.session_state.show_new_supplier_form = False
+    if "selected_item_id" not in st.session_state:
+        st.session_state.selected_item_id = None
+    if "selected_supplier_id" not in st.session_state:
+        st.session_state.selected_supplier_id = None
+
+    # Render main application code
     if st.session_state.page == "dashboard":
-        Dashboard(st.session_state.analytics_manager).render()
+        dashboard.render()
     elif st.session_state.page == "inventory":
         render_inventory_page()
-    elif st.session_state.page == "suppliers":
-        render_suppliers_page()
     elif st.session_state.page == "transactions":
         render_transactions_page()
+    elif st.session_state.page == "suppliers":
+        render_suppliers_page()
     elif st.session_state.page == "analytics":
         render_analytics_page()
     elif st.session_state.page == "settings":
