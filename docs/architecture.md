@@ -1,144 +1,161 @@
 # Vivita Inventory Management System - Architecture
 
 ## System Overview
-The Vivita Inventory Management System is a modern web application built using Streamlit for the frontend and Supabase for the backend. It provides real-time inventory tracking, analytics, and multi-user support.
+The Vivita Inventory Management System is a Streamlit-based application designed for Vivita's inventory management needs. It provides real-time inventory tracking, transaction management, and analytics focused on educational and creative materials.
 
 ## Technology Stack
 - **Frontend**: Streamlit
 - **Backend**: Supabase (PostgreSQL)
-- **Authentication**: Supabase Auth
-- **Analytics**: Pandas, Plotly
+- **Data Processing**: Pandas
 - **Development**: Python 3.9+
-- **Deployment**: Docker
+- **Environment**: Python Virtual Environment
 
-## Database Schema
+## Core Components
 
-### Core Tables
-1. Suppliers
-2. Inventory Items
-3. Transactions
+### Database Structure
 
-Tables must be created in this order due to foreign key dependencies
+#### Items Table
+- Tracks inventory items with:
+  - Unique identifier (UUID)
+  - Name and description
+  - SKU (auto-generated)
+  - Category (specialized for Vivita's needs)
+  - Quantity and unit type
+  - Cost information
+  - Min/Max quantity thresholds
+  - Audit fields (created_at, updated_at)
 
-### Suppliers Table
-Stores supplier information for inventory items with:
-- UUID primary key
-- Supplier name (required)
-- Contact information (email, phone, address)
-- Additional remarks
-- Audit fields (created_at, updated_at, created_by)
-- Active status tracking
+#### Transactions Table
+- Records all inventory movements:
+  - Transaction ID and reference number
+  - Item reference
+  - Transaction type (purchase, sale, adjustment)
+  - Quantity and unit price
+  - Timestamp and notes
+  - Calculated values (total value, running balances)
 
-Key Features:
-- One-to-Many relationship with Items (items.supplier_id foreign key)
-- Automatic timestamp updates via triggers
-- Soft deletion support via is_active flag
+#### Suppliers Table
+- Manages supplier information:
+  - Contact details
+  - Associated items
+  - Active status
+  - Notes and metadata
 
-### Items Table
-- Primary inventory items table
-- Tracks quantity, costs, and thresholds
-- Includes audit fields (created_at, updated_at)
+### Application Modules
 
-### Transactions Table
-- Immutable transaction log
-- Records all inventory movements
-- Links to items and users
+#### Database Management (`app/database/`)
+- `supabase_manager.py`: Handles all database operations
+  - CRUD operations for items, transactions, and suppliers
+  - Connection management and error handling
+  - Data validation and integrity checks
 
-## Core Modules
+#### Analytics (`app/analytics/`)
+- `analytics_manager.py`: Business intelligence features
+  - Category distribution analysis
+  - Transaction trend analysis
+  - Stock level monitoring
+  - Value calculations using weighted average cost
 
-### Database Module
-- `supabase_manager.py`: Database connection and CRUD operations
-- Connection pooling and error handling
-- Transaction management
+#### User Interface Components (`app/components/`)
+- `forms.py`: Input handling
+  - Dynamic form validation
+  - Search-enabled item selection
+  - Smart defaults and suggestions
+- `sidebar.py`: Navigation
+  - Page routing
+  - Application state management
+- `dashboard.py`: Data visualization
+  - Key metrics display
+  - Status summaries
+  - Alert notifications
 
-### Analytics Module
-- `analytics_manager.py`: Data analysis and metrics
-- `visualizations.py`: Charts and dashboards
-- Caching for performance
+#### Utilities (`app/utils/`)
+- `constants.py`: System configuration
+  - Category definitions:
+    - Robotics and Electronics
+    - Arts and Crafts
+    - Design and Prototyping
+    - Kitchen/Baking Activities
+    - General Office/Administrative Items
+  - Transaction types
+  - Unit types
+- `helpers.py`: Support functions
+  - SKU generation
+  - Date/time handling
+  - Currency formatting
+  - Weighted average cost calculations
 
-### Components Module
-- `forms.py`: Input forms and validation
-- `sidebar.py`: Navigation and filters
-- `dashboard.py`: Main dashboard components
-
-### Utils Module
-- `constants.py`: System constants
-- `helpers.py`: Utility functions
-
-## Features & Workflows
+## Key Features
 
 ### Inventory Management
-1. Item creation and updates
-2. Stock level tracking
-3. Low stock alerts
+1. **Item Management**
+   - Category-based organization
+   - Automatic SKU generation
+   - Stock level tracking
+   - Min/Max quantity monitoring
 
-### Transaction Processing
-1. Purchase recording
-2. Sales tracking
-3. Stock adjustments
-4. Returns handling
+2. **Transaction Processing**
+   - Purchase recording
+   - Sales tracking
+   - Stock adjustments
+   - Running balance calculation
+   - Weighted average cost tracking
 
-### Analytics & Reporting
-1. Stock level reports
-2. Transaction history
-3. Trend analysis
-4. Cost tracking
+3. **Analytics & Reporting**
+   - Category distribution analysis
+   - Transaction trends
+   - Stock alerts
+   - Value calculations
+   - CSV export functionality
 
-## User Interface Components
+### User Interface
 
-### Main Dashboard
-- Current stock levels
+#### Dashboard Page
+- Overview of key metrics
 - Recent transactions
-- Alert notifications
+- Stock alerts
+- Category distribution
 
-### Inventory Management
-- Item list view
-- Add/Edit forms
-- Stock adjustment interface
+#### Inventory Page
+- Searchable item list
+- Category filtering
+- Quick actions for common tasks
+- Stock level indicators
 
-### Analytics Dashboard
-- Stock trends
-- Transaction summary
-- Cost analysis
+#### Transactions Page
+- Search-enabled item selection
+- Smart transaction form
+- Transaction history
+- Balance tracking
+
+#### Analytics Page
+- Category analysis
+- Transaction analysis
+- Stock monitoring
+- Value calculations
+
+#### Settings Page
+- Data management
+- CSV export functionality
+- System information
 
 ## Data Flow
-1. User interacts with Streamlit UI
-2. Requests processed by component handlers
+1. User interactions via Streamlit UI
+2. Form validation and data processing
 3. Database operations via Supabase
-4. Real-time updates reflected in UI
+4. Real-time updates and calculations
+5. Analytics processing and display
 
-## Security & Access Control
+## Security & Data Integrity
+- Environment-based configuration
+- Input validation
+- Transaction logging
+- Audit trail maintenance
+- Data backup via Supabase
 
-### Authentication
-- Supabase Auth integration
-- JWT token management
-- Session handling
-
-### Authorization
-- Role-based access control
-- Row-level security policies
-- Audit logging
-
-## Deployment Guide
-
-### Prerequisites
-1. Docker and Docker Compose
-2. Supabase account
-3. Environment variables configured
-
-### Deployment Steps
-1. Build Docker image
-2. Configure environment
-3. Run database migrations
-4. Start application
-
-### Monitoring
-- Application logs
-- Database metrics
-- Error tracking
-
-## Performance Considerations
-- Database indexing
-- Query optimization
-- Caching strategies
-- Connection pooling
+## Future Considerations
+1. Multi-user support
+2. Advanced reporting
+3. Batch operations
+4. Mobile interface
+5. Integration with other systems
