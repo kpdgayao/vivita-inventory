@@ -50,20 +50,18 @@ class Dashboard:
                 )
         
         with right_col:
-            # Quick Actions
             st.markdown("### ⚡ Quick Actions")
-            
-            # Add new item button
-            if st.button("📦 Add New Item", use_container_width=True):
-                st.session_state.page = "inventory"
-                st.session_state.show_new_item_form = True
-                st.rerun()
-            
-            # Add new supplier button
-            if st.button("🏢 Add New Supplier", use_container_width=True):
-                st.session_state.page = "suppliers"
-                st.session_state.show_new_supplier_form = True
-                st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("➕ New Item"):
+                    st.session_state.page = "inventory"
+                    st.session_state.show_new_item_form = True
+                    st.rerun()
+            with col2:
+                if st.button("🔄 New Transaction"):
+                    st.session_state.page = "transactions"
+                    st.session_state.show_new_transaction_form = True
+                    st.rerun()
 
     def render_stock_alerts(self):
         """Render critical stock alerts."""

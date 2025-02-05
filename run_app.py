@@ -13,5 +13,5 @@ os.environ['PYTHONPATH'] = str(project_root)
 # Run the Streamlit app
 if __name__ == "__main__":
     import streamlit.web.cli as stcli
-    sys.argv = ["streamlit", "run", str(project_root / "main.py"), "--logger.level=debug"]
+    sys.argv = ["streamlit", "run", str(project_root / "app" / "main.py"), "--logger.level=debug"]
     sys.exit(stcli.main())

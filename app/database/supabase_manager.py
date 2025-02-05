@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from app.utils.helpers import get_ph_timestamp
 
 load_dotenv()
 
@@ -20,12 +21,20 @@ class SupabaseManager:
             raise ValueError("Supabase credentials not found in environment variables")
         
         try:
+            print(f"Initializing Supabase client with URL: {self.supabase_url}")
             # Initialize Supabase client with minimal configuration
             self.client: Client = create_client(
                 self.supabase_url,
                 self.supabase_key
             )
+            # Test the connection with a simple query
+            print("Testing connection with a simple query...")
+            test_response = self.client.from_("items").select("*").limit(1).execute()
+            print(f"Test query response: {test_response.data}")
         except Exception as e:
+            import traceback
+            print(f"Failed to connect to Supabase: {str(e)}")
+            print(f"Traceback: {traceback.format_exc()}")
             raise ConnectionError(f"Failed to connect to Supabase: {str(e)}")
 
     def get_item(self, item_id: str) -> Optional[Dict[str, Any]]:
@@ -35,21 +44,33 @@ class SupabaseManager:
             return response.data if response.data else None
         except Exception as e:
             print(f"Error retrieving item: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     def get_items(self, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Retrieve items with optional filters."""
         try:
+            print(f"Attempting to fetch items from Supabase URL: {self.supabase_url}")
             query = self.client.table("items").select("*")
             
             if filters:
+                print(f"Applying filters: {filters}")
                 for key, value in filters.items():
                     query = query.eq(key, value)
             
             response = query.execute()
+            print(f"Response data type: {type(response.data)}")
+            print(f"Response data: {response.data}")
+            if response.data:
+                print(f"Number of items retrieved: {len(response.data)}")
+                if len(response.data) > 0:
+                    print(f"Sample item: {response.data[0]}")
             return response.data
         except Exception as e:
-            print(f"Error retrieving items: {e}")
+            print(f"Error retrieving items: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return []
 
     def create_item(self, item_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -63,8 +84,8 @@ class SupabaseManager:
             
             # Add default values if not present
             item_data.setdefault("is_active", True)
-            item_data.setdefault("created_at", datetime.now().isoformat())
-            item_data.setdefault("updated_at", datetime.now().isoformat())
+            item_data.setdefault("created_at", get_ph_timestamp())
+            item_data.setdefault("updated_at", get_ph_timestamp())
             
             # Ensure numeric fields are the correct type
             try:
@@ -85,19 +106,23 @@ class SupabaseManager:
             return response.data[0]
         except Exception as e:
             print(f"Error creating item: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     def update_item(self, item_id: str, item_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update an existing item."""
         try:
             # Add updated_at timestamp
-            item_data["updated_at"] = datetime.now().isoformat()
+            item_data["updated_at"] = get_ph_timestamp()
             
             # Update the item
             response = self.client.table("items").update(item_data).eq("id", item_id).execute()
             return response.data[0] if response.data else None
         except Exception as e:
             print(f"Error updating item: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     def delete_item(self, item_id: str) -> bool:
@@ -107,6 +132,8 @@ class SupabaseManager:
             return bool(response.data)
         except Exception as e:
             print(f"Error deleting item: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return False
 
     def get_low_stock_items(self) -> List[Dict[str, Any]]:
@@ -121,6 +148,8 @@ class SupabaseManager:
             return [item for item in response.data if item["quantity"] <= item["min_quantity"]]
         except Exception as e:
             print(f"Error retrieving low stock items: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return []
 
     def is_connected(self) -> bool:
@@ -128,7 +157,10 @@ class SupabaseManager:
         try:
             self.client.table("items").select("id").limit(1).execute()
             return True
-        except Exception:
+        except Exception as e:
+            print(f"Error checking connection: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return False
 
     def get_transactions(
@@ -152,6 +184,8 @@ class SupabaseManager:
             return response.data
         except Exception as e:
             print(f"Error retrieving transactions: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return []
 
     def create_transaction(self, transaction_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -175,20 +209,41 @@ class SupabaseManager:
             if new_quantity < 0:
                 raise ValueError("Transaction would result in negative quantity")
             
+            # Generate reference number if not provided
+            if not transaction_data.get("reference_number"):
+                from ..utils.helpers import generate_transaction_reference
+                transaction_data["reference_number"] = generate_transaction_reference()
+            
+            # Create transaction record with only allowed fields
+            # Let the database handle timestamps with DEFAULT CURRENT_TIMESTAMP
+            transaction_record = {
+                "item_id": transaction_data["item_id"],
+                "transaction_type": transaction_data["transaction_type"],
+                "quantity": transaction_data["quantity"],
+                "unit_price": transaction_data["unit_price"],
+                "reference_number": transaction_data.get("reference_number", ""),
+                "notes": transaction_data.get("notes", "")
+            }
+            
             # Create transaction
-            print(f"Sending transaction to Supabase: {transaction_data}")
-            response = self.client.table("transactions").insert(transaction_data).execute()
+            print(f"Sending transaction to Supabase: {transaction_record}")
+            response = self.client.table("transactions").insert(transaction_record).execute()
             print(f"Supabase response: {response}")
             if not response.data:
                 raise ValueError("No data returned from transaction insert")
             
             # Update item quantity
-            self.update_item(item["id"], {"quantity": new_quantity})
+            # Let the database trigger handle updated_at
+            self.update_item(item["id"], {
+                "quantity": new_quantity
+            })
             
             return response.data[0]
         except Exception as e:
             print(f"Error creating transaction: {e}")
-            return None
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            raise  # Re-raise the exception to be handled by the caller
 
     def get_transaction(self, transaction_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a single transaction by ID."""
@@ -197,19 +252,23 @@ class SupabaseManager:
             return response.data if response.data else None
         except Exception as e:
             print(f"Error retrieving transaction: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     def update_transaction(self, transaction_id: str, transaction_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update an existing transaction."""
         try:
             # Add updated_at timestamp
-            transaction_data["updated_at"] = datetime.now().isoformat()
+            transaction_data["updated_at"] = get_ph_timestamp()
             
             # Update the transaction
             response = self.client.table("transactions").update(transaction_data).eq("id", transaction_id).execute()
             return response.data[0] if response.data else None
         except Exception as e:
             print(f"Error updating transaction: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     def delete_transaction(self, transaction_id: str) -> bool:
@@ -219,6 +278,8 @@ class SupabaseManager:
             return bool(response.data)
         except Exception as e:
             print(f"Error deleting transaction: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return False
 
     def get_supplier(self, supplier_id: str) -> Optional[Dict[str, Any]]:
@@ -228,6 +289,8 @@ class SupabaseManager:
             return response.data if response.data else None
         except Exception as e:
             print(f"Error retrieving supplier: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     def get_suppliers(self, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -247,6 +310,8 @@ class SupabaseManager:
             return response.data
         except Exception as e:
             print(f"Error retrieving suppliers: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return []
 
     def create_supplier(self, supplier_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -262,29 +327,49 @@ class SupabaseManager:
             
             # Add default values if not present
             supplier_data.setdefault("is_active", True)
-            supplier_data.setdefault("created_at", datetime.now().isoformat())
-            supplier_data.setdefault("updated_at", datetime.now().isoformat())
+            supplier_data.setdefault("created_at", get_ph_timestamp())
+            supplier_data.setdefault("updated_at", get_ph_timestamp())
+            
+            # Debug: Print final data before insert
+            print("Final supplier data to insert:", supplier_data)
             
             # Create the supplier
-            response = self.client.table("suppliers").insert(supplier_data).execute()
-            
-            if not response.data:
-                print("Error: No data returned from insert operation")
-                return None
-            
-            return response.data[0]
+            try:
+                print("Attempting to insert supplier...")
+                response = self.client.table("suppliers").insert(supplier_data).execute()
+                print("Insert response:", response)
+                
+                if not response.data:
+                    print("Error: No data returned from insert operation")
+                    if hasattr(response, 'error'):
+                        print("Error details:", response.error)
+                    return None
+                
+                print("Created supplier:", response.data[0])
+                return response.data[0]
+            except Exception as insert_error:
+                print(f"Error during insert operation: {str(insert_error)}")
+                import traceback
+                print(f"Insert error traceback: {traceback.format_exc()}")
+                raise
         except Exception as e:
             print(f"Error creating supplier: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     def update_supplier(self, supplier_id: str, supplier_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update an existing supplier."""
         try:
+            print("\n=== Updating Supplier ===")
+            print("Initial update data:", supplier_data)
+            
             # Remove any None values
             update_data = {k: v for k, v in supplier_data.items() if v is not None}
+            print("Filtered update data:", update_data)
             
             # Update the updated_at timestamp
-            update_data["updated_at"] = datetime.now().isoformat()
+            update_data["updated_at"] = get_ph_timestamp()
             
             response = self.client.table("suppliers").update(update_data).eq("id", supplier_id).execute()
             
@@ -292,9 +377,12 @@ class SupabaseManager:
                 print("Error: No data returned from update operation")
                 return None
             
+            print("Updated supplier:", response.data[0])
             return response.data[0]
         except Exception as e:
             print(f"Error updating supplier: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     def delete_supplier(self, supplier_id: str) -> bool:
@@ -302,10 +390,12 @@ class SupabaseManager:
         try:
             response = self.client.table("suppliers").update({
                 "is_active": False,
-                "updated_at": datetime.now().isoformat()
+                "updated_at": get_ph_timestamp()
             }).eq("id", supplier_id).execute()
             
             return bool(response.data)
         except Exception as e:
             print(f"Error deleting supplier: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return False
