@@ -31,14 +31,11 @@ class UnitType(str, Enum):
 
 class CategoryType(str, Enum):
     """Valid category types."""
-    RAW_MATERIALS = "raw_materials"
-    FINISHED_GOODS = "finished_goods"
-    PACKAGING = "packaging"
-    SUPPLIES = "supplies"
-    EQUIPMENT = "equipment"
-    SPARE_PARTS = "spare_parts"
-    CONSUMABLES = "consumables"
-    OTHER = "other"
+    ROBOTICS = "robotics_and_electronics"
+    ARTS = "arts_and_crafts"
+    DESIGN = "design_and_prototyping"
+    KITCHEN = "kitchen_baking_activities"
+    OFFICE = "general_office_administrative"
 
 # Form field configurations
 ITEM_FORM_FIELDS: Dict[str, Dict] = {

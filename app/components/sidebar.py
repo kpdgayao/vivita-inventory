@@ -38,40 +38,8 @@ class Sidebar:
             if selected_page != current_page:
                 on_page_change(selected_page)
             
-            # Filters section
-            if current_page in ["inventory", "analytics"]:
-                st.markdown("---")
-                st.subheader("Filters")
-                filters = {}
-                
-                # Category filter
-                filters["category"] = st.multiselect(
-                    "Categories",
-                    options=[e.value for e in CategoryType],
-                    default=[]
-                )
-                
-                # Status filter
-                filters["status"] = st.multiselect(
-                    "Status",
-                    ["In Stock", "Low Stock", "Out of Stock"],
-                    default=[]
-                )
-                
-                return filters
-            
-            elif current_page == "transactions":
-                st.markdown("---")
-                st.subheader("Filters")
-                filters = {}
-                
-                # Transaction type filter
-                filters["transaction_type"] = st.multiselect(
-                    "Transaction Types",
-                    [e.value for e in TransactionType],
-                    default=[]
-                )
-                
-                return filters
+            # Add version info at the bottom
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("v1.0.0")
             
             return {}

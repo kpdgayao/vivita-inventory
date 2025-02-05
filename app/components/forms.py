@@ -11,7 +11,11 @@ from ..utils.constants import (
     UnitType,
     SUPPLIER_FORM_FIELDS
 )
-from ..utils.helpers import generate_sku, validate_quantity
+from ..utils.helpers import (
+    generate_sku,
+    validate_quantity,
+    format_currency
+)
 
 class ItemForm:
     """Form for creating and editing inventory items."""
@@ -32,7 +36,10 @@ class ItemForm:
 
     def render(self):
         """Render the item form."""
-        with st.form("item_form"):
+        # Use a unique form key based on whether we're editing or adding
+        form_key = f"edit_item_{self.existing_item['id']}" if self.existing_item else "add_item_form"
+        
+        with st.form(form_key):
             # Left and right columns for better organization
             left_col, right_col = st.columns([3, 2])
             
@@ -143,10 +150,15 @@ class ItemForm:
                 supplier_id = None
                 
                 if supplier_options:
+                    current_supplier = None
+                    if self.existing_item and "supplier_id" in self.existing_item:
+                        current_supplier = self.existing_item["supplier_id"]
+                    
                     supplier_id = st.selectbox(
                         "Supplier",
                         options=[""] + [s[0] for s in supplier_options],
                         format_func=lambda x: "Select Supplier" if not x else next((s[1] for s in supplier_options if s[0] == x), x),
+                        index=0 if not current_supplier else [i for i, s in enumerate([""] + [s[0] for s in supplier_options]) if s == current_supplier][0],
                         help="Select the primary supplier for this item"
                     )
                 
@@ -199,7 +211,6 @@ class ItemForm:
                 if not sku:
                     existing_items = st.session_state.db_manager.get_items()
                     existing_skus = [item["sku"] for item in existing_items if item["sku"]]
-                    from ..utils.helpers import generate_sku
                     sku = generate_sku(category, name, existing_skus)
                 
                 data = {
@@ -215,6 +226,10 @@ class ItemForm:
                     "quantity": initial_qty
                 }
                 
+                # Include the ID if we're editing an existing item
+                if self.existing_item and "id" in self.existing_item:
+                    data["id"] = self.existing_item["id"]
+                
                 self.on_submit(data)
                 return data
             return None
@@ -222,76 +237,149 @@ class ItemForm:
 class TransactionForm:
     """Form for creating inventory transactions."""
     
-    def render(self, items):
+    def __init__(self, on_submit: Callable[[Dict[str, Any]], None]):
+        """Initialize the TransactionForm.
+        
+        Args:
+            on_submit: Callback function to handle form submission
+        """
+        self.on_submit = on_submit
+    
+    def render(self):
         """Render the transaction form."""
+        # Get items for selection
+        items = st.session_state.db_manager.get_items()
+        if not items:
+            st.warning("No items available. Please add items first.")
+            return False
+        
         st.markdown("### 🔄 New Transaction")
         
         with st.form("transaction_form", clear_on_submit=True):
-            form_container = st.container()
-            with form_container:
-                col1, col2 = st.columns(2)
+            # Item search and selection
+            search_col, info_col = st.columns([2, 1])
+            
+            with search_col:
+                # Search box for items
+                search_query = st.text_input(
+                    "Search Items",
+                    value=st.session_state.get("item_search", ""),
+                    help="Search by item name, SKU, or category",
+                    placeholder="Start typing to search..."
+                ).strip().lower()
                 
-                with col1:
-                    item_id = st.selectbox(
-                        "Select Item",
-                        options=[item["id"] for item in items],
-                        format_func=lambda x: next((item["name"] for item in items if item["id"] == x), ""),
-                        help="Select the item for this transaction",
-                        key="transaction_item"
-                    )
-                    
-                    transaction_type = st.selectbox(
-                        "Transaction Type",
-                        ["purchase", "sale", "adjustment"],
-                        help="Select the type of transaction",
-                        key="transaction_type"
-                    )
+                # Filter items based on search
+                filtered_items = items
+                if search_query:
+                    filtered_items = [
+                        item for item in items
+                        if search_query in item["name"].lower()
+                        or search_query in (item.get("sku", "")).lower()
+                        or search_query in item["category"].lower()
+                    ]
                 
-                with col2:
-                    quantity = st.number_input(
-                        "Quantity",
-                        min_value=1,
-                        help="Enter the transaction quantity",
-                        key="transaction_quantity"
-                    )
-                    
-                    st.markdown("**Unit Price** (₱)")
-                    unit_price = st.number_input(
-                        "Unit Price",
-                        min_value=0.0,
-                        help="Enter the price per unit in Philippine Pesos",
-                        format="%.2f",
-                        key="transaction_price",
-                        label_visibility="collapsed"
-                    )
-                    
-                    reference_number = st.text_input(
-                        "Reference Number",
-                        help="Enter a reference number (e.g., PO number, invoice number)",
-                        key="transaction_reference"
-                    )
+                # Format items for display
+                item_options = {
+                    item["id"]: f"{item['name']} ({item['category']}) - {item['quantity']} {item['unit_type']}"
+                    for item in filtered_items
+                }
                 
-                notes = st.text_area(
-                    "Notes",
-                    help="Enter any additional notes",
-                    height=100,
-                    key="transaction_notes"
+                # Item selection from filtered list
+                default_item_index = 0
+                if st.session_state.get("selected_item_id"):
+                    try:
+                        default_item_index = list(item_options.keys()).index(st.session_state.selected_item_id)
+                    except ValueError:
+                        pass
+                
+                item_id = st.selectbox(
+                    "Select Item",
+                    options=list(item_options.keys()),
+                    format_func=lambda x: item_options[x],
+                    help="Select the item for this transaction",
+                    index=default_item_index if filtered_items else 0
+                ) if filtered_items else None
+            
+            # Get selected item details for reference
+            selected_item = next((item for item in items if item["id"] == item_id), None)
+            if selected_item:
+                with info_col:
+                    st.markdown("**Item Details**")
+                    st.info(f"""
+                    • Stock: {selected_item['quantity']} {selected_item['unit_type']}
+                    • Cost: {format_currency(selected_item['unit_cost'])}
+                    • Category: {selected_item['category']}
+                    """)
+            
+            if not item_id:
+                st.warning("Please select an item to continue")
+                submit_disabled = True
+            else:
+                submit_disabled = False
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Transaction type with default from session state
+                default_type_index = 0
+                transaction_types = ["purchase", "sale", "adjustment"]
+                if st.session_state.get("default_transaction_type"):
+                    try:
+                        default_type_index = transaction_types.index(
+                            st.session_state.default_transaction_type
+                        )
+                    except ValueError:
+                        pass
+                
+                transaction_type = st.selectbox(
+                    "Transaction Type",
+                    options=transaction_types,
+                    help="Select the type of transaction",
+                    index=default_type_index
+                )
+                
+                quantity = st.number_input(
+                    "Quantity",
+                    min_value=1,
+                    value=1,
+                    step=1,
+                    help=f"Enter the quantity in {selected_item['unit_type'] if selected_item else 'units'}"
                 )
             
-            col_submit1, col_submit2, col_submit3 = st.columns([1, 2, 1])
-            with col_submit2:
-                submitted = st.form_submit_button(
-                    "📝 Record Transaction",
-                    use_container_width=True,
-                    type="primary"
+            with col2:
+                st.markdown("**Unit Price** (₱)")
+                unit_price = st.number_input(
+                    "Unit Price",
+                    min_value=0.0,
+                    value=float(selected_item['unit_cost']) if selected_item else 0.0,
+                    step=0.01,
+                    format="%.2f",
+                    help="Enter the price per unit in Philippine Pesos",
+                    label_visibility="collapsed"
+                )
+                
+                reference_number = st.text_input(
+                    "Reference Number",
+                    help="Enter a reference number (e.g., PO number, invoice number)"
                 )
             
-            if submitted:
-                if not item_id:
-                    st.error("❌ Please select an item")
-                    return None
+            notes = st.text_area(
+                "Notes",
+                help="Enter any additional notes for this transaction"
+            )
+            
+            submitted = st.form_submit_button(
+                "Submit Transaction",
+                disabled=submit_disabled,
+                help="Submit the transaction" if not submit_disabled else "Please select an item first"
+            )
+            
+            if submitted and not submit_disabled:
+                # Save search query to session state
+                st.session_state["item_search"] = search_query
                 
-                return {
+                # Prepare transaction data
+                data = {
                     "item_id": item_id,
                     "transaction_type": transaction_type,
                     "quantity": quantity,
@@ -299,6 +387,9 @@ class TransactionForm:
                     "reference_number": reference_number,
                     "notes": notes
                 }
+                
+                self.on_submit(data)
+                return data
             return None
 
 class SupplierForm:
