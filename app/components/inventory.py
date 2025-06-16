@@ -215,9 +215,9 @@ class InventoryManager:
         if filters.get("search"):
             search_query = str(filters["search"]).lower()
             filtered_items = [item for item in filtered_items 
-                             if (search_query in str(item.get("name", "")).lower() or
-                                search_query in str(item.get("sku", "")).lower() or
-                                search_query in str(item.get("description", "")).lower())]
+                             if (search_query in str(item.get("name") or "").lower() or
+                                search_query in str(item.get("sku") or "").lower() or
+                                search_query in str(item.get("description") or "").lower())]
         
         # Apply sorting
         sort_by = filters.get("sort_by", "name")
